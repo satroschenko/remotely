@@ -1,0 +1,205 @@
+# Zala TV — собственный клиент Zala Yasna для Android TV
+
+Дата: 2026-10-15
+Статус: дизайн согласован, ожидает ревью спецификации
+
+## 1. Цель
+
+Простое и надёжное приложение для Android TV (Xiaomi Mi Box), заменяющее глючный официальный клиент
+ZALAyasna-TV (ZTE WebView-обёртка над порталом `tv.zala.by`).
+
+**Пользователи** — пожилые родители. Первичную настройку (логин, избранное, автозапуск) делает администратор
+(сын) с пульта.
+
+**Критерии успеха**
+- Включил приставку → идёт последний канал, без каких-либо действий.
+- Переключение каналов, список с предпросмотром, программа передач, просмотр записи за последние 48 ч —
+  всё с пульта Mi Box (крестовина, OK, Назад).
+- Приложение не зависает и само восстанавливается после сбоев сети / сервера; не «долбит» сервер бесконечно.
+- Родители никогда не видят технических ошибок.
+
+**Вне рамок (сознательно)**: фильмотека (VOD), запись, поиск, напоминания, родительский контроль, профили,
+PIN, ввод логина через adb/телефон, цифровые кнопки.
+
+## 2. Результаты разведки API (проверено живыми запросами 2026-10-15)
+
+Все ответы — JSON, если не указано иное. `{epg}` = `https://{serdomain}:{serhttpsport}` из шага 1 логина
+(сейчас `https://itvepg177.tv.zala.by:443`). Фрейм шаблона `{F}` = `{epg}/iptvepg/frame1255` (из `StypeUrl`).
+Сессия — cookie `JSESSIONID` (Path `/iptvepg`). Константы клиента: `TerminalFlag=16` (Smart TV),
+`TerminalOsType=2`, `clientId/stbid=zxyzxy`, `mac=000000000000`.
+
+### 2.1 Логин (4 шага)
+1. `GET https://tv.zala.by:443/iptvepg/datasource/mobilelogin.jsp?Action=Login&UserID={login}&TerminalFlag=16&TerminalOsType=2&iscors=1&timestamp={ms}`
+   → `ReturnCode` (`0`, `80106101`, `80106102` — успех), `serdomain`, `serhttpsport`, `EncryToken`, `iemg`, `AuthStr`, `EmgInfo`.
+2. `GET {epg}/iptvepg/datasource/getauthenticator.jsp?encrytoken&userid&iemg&authStr&emgInfo&userpwd={urlencoded}&EpgServer={epg}&stbid&mac&TerminalFlag&TerminalOsType&iscors=1&timestamp`
+   → `ReturnCode`, `authenticator`.
+3. `GET {epg}/iptvepg/datasource/mobilegetusertoken.jsp?EncryToken&UserID&EpgServer&clientId&Authenticator&TerminalFlag&TerminalOsType&iscors=1&timestamp`
+   (+ `AuthStr`, `EmgInfo` если `iemg==1`) → `ReturnCode`, `UserToken`, `UserTokenExpiredTime` (`yyyy.MM.dd HH:mm:ss`, ≈ +24 ч),
+   `epghttpsdomain`, `epghttpsdomainbackup`.
+4. `GET {epg}/iptvepg/datasource/mobileportalauth.jsp?UserID&UserToken&STBID&TerminalFlag&TerminalOsType&iscors=1&timestamp`
+   → `ReturnCode`, `StypeUrl` (`frame1255`). Затем `GET {F}/frameset_builder.html?islogin=1&userToken={token}&lan=ru`
+   для инициализации серверной сессии.
+
+Поддержание сессии: `GET {epg}/iptvepg/heartbeat.jsp?timestamp={ms}` (HTML).
+
+### 2.2 Данные
+- **Каналы**: `GET {F}/action/sdk_getchannellist.jsp?columncode=0803` → `data[]`: `channelcode`, `channelname`,
+  `usermixno` (номер для пользователя), `mixno`, `columncode`, `definition`, `posterimage` (логотип, относительный путь
+  `../images/markurl/...` от `{F}/action/`), `tvodavailable`, `timeshiftenable`, `prevuename`, `begintime`/`endtime`.
+- **Подписка**: `GET {F}/action/sdk_getsubscribechannel.jsp` — используется для скрытия неподписанных каналов
+  (формат ответа фиксируется фикстурой при реализации).
+- **Серверное время**: `GET {epg}/iptvepg/frame1258/sdk_getepgdate.jsp` → `nowdate`, `utcnowdate` (`yyyyMMddHHmmss`).
+- **Глубина архива**: `GET {epg}/iptvepg/frame1258/sdk_querytvodtstime.jsp?terminalflag=16&mediaservices=2&refreshchannel=1`
+  → `tvodchannellist[]{mixno, tvodtime}` (сейчас 172800 с = 48 ч).
+- **Программа передач**: `GET {epg}/iptvepg/frame1258/sdk_getprevuellist.jsp?channelcode={c}&utcbegintime=yyyy.MM.dd HH:mm:ss&utcendtime=...`
+  → `data[]`: `prevuecode`, `prevuename`, `description`, `genre`, `utcbegintime`, `utcendtime`, `begintime`/`endtime`
+  (местное), `istimeshift`.
+
+### 2.3 Воспроизведение
+- **Эфир**: `POST {F}/action/sdk_getbatchtvplayurl.jsp` (form) `channelcodes={c}&columncodes={col}&channelnostr={mixno}&definition={def}&jitpdrmType=&isSpecial=0&profile=`
+  → `data[0].playurl` — DASH `manifest.mpd?AuthInfo=...&JITPDRMType=NO...`. Ссылки одноразовые, брать свежую при
+  каждом запуске/переподключении. Манифест: `type=dynamic`, `timeShiftBufferDepth=PT60S`, H.264 до 1080p + AAC,
+  **без ContentProtection**.
+- **Запись (архив)**:
+  1. `GET {F}/action/get_authTvodresult.jsp?columnid={col}&channelid={c}&contentcode={prevuecode}&mixno={usermixno}&leefocus=0`
+     → JS-объект (не строгий JSON: ключи без кавычек) `{returnCode:"0", authid:"...", ...}`.
+     `returnCode` 5/98 — канал заблокирован (не поддерживаем, показываем «Запись недоступна»).
+  2. `GET {F}/channel_tvod_play.jsp?authid&contentcode&channelcode&columncode&definition&leefocus=0&jitpdrmType=NO`
+     → HTML; ссылка извлекается регэкспом `var tvodPlayUrl = "(...)"`. Манифест `type=static`,
+     `mediaPresentationDuration` = длина передачи, без шифрования.
+- **Важно**: `jitpdrmType` пустой/`NO` (как у браузера). Путь официального Android-шаблона просит Widevine — не используем.
+
+### 2.4 Сетевые особенности
+- Признаки потерянной сессии: `ReturnCode/returncode` ≠ 0 с кодом авторизации, HTML вместо JSON,
+  редирект на `login.jsp`/`pcportalauth.jsp`.
+- Неверный пароль: ненулевой `ReturnCode` на шагах 1–3 логина (конкретные коды фиксируются фикстурами при реализации).
+
+## 3. Пользовательский интерфейс
+
+Пульт Mi Box: крестовина, OK (короткое/долгое), Назад, Home. Цифр, CH±, Menu нет.
+
+### 3.1 Просмотр (по умолчанию)
+- Старт сразу на последнем канале во весь экран.
+- Вверх/Вниз — соседний канал в **текущем списке** (Избранное, если не пусто, иначе Все).
+- При переключении 5 с показывается плашка: номер, название, текущая передача, время, прогресс, следующая.
+- OK — список каналов. Вправо — программа передач текущего канала.
+- Назад — показать плашку (не выходит из приложения).
+
+### 3.2 Список каналов + предпросмотр
+- Слева крупный список: номер, логотип, название, текущая передача, прогресс.
+- Справа окно предпросмотра: после ~1 с на канале в окне начинает играть этот канал, ниже — текущая и следующая передачи.
+- OK — во весь экран; Назад — вернуться к прежнему каналу; Вправо — программа передач выбранного канала.
+- Долгое OK — диалог «★ Добавить в избранное / Убрать».
+- Влево — боковое меню: «★ Избранное», «Все каналы», «⚙ Настройки». Если избранное не пусто, список открывается на нём.
+- Неподписанные и скрытые каналы не показываются.
+
+### 3.3 Программа передач
+- Вкладки дней: Позавчера · Вчера · Сегодня · Завтра (диапазон ограничен глубиной архива для прошлого).
+- Текущая передача подсвечена, список прокручен к ней. Прошедшие в пределах архива — значок «▶ Запись».
+- OK на текущей — эфир; на прошедшей с записью — запись с начала; на будущей — ничего (показать описание).
+
+### 3.4 Просмотр записи
+- Постоянная метка «ЗАПИСЬ · Вчера 19:30».
+- OK — пауза/продолжить; Влево/Вправо — ±30 с (удержание — ускоренная перемотка); полоса прогресса.
+- Назад — крупная кнопка «Вернуться в прямой эфир» (фокус на ней) / «Продолжить запись».
+- По окончании — автоматически следующая передача канала из архива (если есть), иначе эфир.
+
+### 3.5 Вход и настройки
+- Экран входа (первый запуск или после «Выйти»): логин, пароль, кнопка «Войти»; ошибки по-русски.
+- Настройки (без PIN): аккаунт (логин, Выйти), скрыть/показать каналы, порядок каналов, управление избранным,
+  размер шрифта (Крупный по умолчанию / Очень крупный), качество (Авто / Максимальное),
+  «Запускать при включении приставки», Диагностика, версия.
+- Диагностика: состояние сети, сессии и срок токена, текущий URL (без токенов), последние 50 событий с временем.
+
+### 3.6 Визуальный стиль
+- Тёмный фон, высокий контраст, крупные шрифты (основной текст ≥ 24sp на 1080p), всё на русском.
+- Фокус: жёлтая рамка + лёгкое увеличение.
+- Пользователю только спокойные сообщения: «Подключение…», «Нет интернета, ждём…», «Восстанавливаем показ…».
+
+## 4. Архитектура
+
+Kotlin, Jetpack Compose for TV (`androidx.tv:tv-material`), Media3 ExoPlayer + DASH, OkHttp, kotlinx.serialization,
+DataStore, coroutines/Flow. Одна Activity, ручной DI (`AppContainer`). `minSdk 28`, targetSdk — актуальный.
+Один Gradle-модуль `app`, пакеты по слоям.
+
+| Компонент | Ответственность | Зависимости |
+|---|---|---|
+| `data.api.ZalaApi` | HTTP-вызовы и парсинг (раздел 2), без состояния | OkHttp, `ZalaParsers` |
+| `data.api.ZalaParsers` | Чистые функции разбора: JSON, нестрогий JS-объект `get_authTvodresult`, извлечение `tvodPlayUrl` из HTML, определение «сессия потеряна» | — |
+| `data.session.SessionManager` | Состояние сессии (token, expiry, epg-домены, frame), cookie jar, логин, проактивное обновление (за 1 ч до истечения), реактивный перелогин с `Mutex` (один на все параллельные запросы), heartbeat каждые 5 мин, пока приложение на экране | ZalaApi, CredentialsStore |
+| `data.repo.ChannelRepository` | Подписанные каналы, порядок, скрытые, избранное; дисковый кэш для мгновенного старта | ZalaApi, SessionManager, SettingsStore |
+| `data.repo.EpgRepository` | EPG по дням, кэш (память + диск), часовой пояс `Europe/Minsk`, текущая/следующая, признак доступности записи | ZalaApi, SessionManager |
+| `data.repo.PlaybackRepository` | `liveUrl(channel)`, `archiveUrl(channel, programme)` — всегда свежие | ZalaApi, SessionManager |
+| `data.store.SettingsStore` | DataStore: настройки, избранное, скрытые, порядок, последний канал | DataStore |
+| `data.store.CredentialsStore` | Логин/пароль, шифрование AES-GCM ключом Android Keystore | Keystore, DataStore |
+| `player.PlayerController` | Единственный ExoPlayer; режимы Live/Archive; watchdog; политика повторов; события в диагностику | Media3, PlaybackRepository, NetworkMonitor |
+| `core.NetworkMonitor` | Flow состояния сети (`ConnectivityManager.NetworkCallback`) | — |
+| `core.RetryPolicy` | Общая политика: паузы 2/4/8/16/30 с, максимум 5 попыток, затем состояние `NeedsUserRetry` | Clock |
+| `core.EventLog` | Кольцевой буфер 50 событий для диагностики | — |
+| `ui.*` | Экраны: Playback (с оверлеями плашки/списка/EPG/меню), Login, Settings, Diagnostics; ViewModel на экран | репозитории, PlayerController |
+| `boot.BootReceiver` | Автозапуск при `BOOT_COMPLETED`, если включён в настройках | SettingsStore |
+
+**Один плеер**: полноэкранный режим и окно предпросмотра — одна видеоповерхность (`PlayerSurface`), которая
+анимированно меняет размер/положение. Два декодера одновременно не используются.
+
+**Поток данных**: UI → ViewModel → Repository → SessionManager → ZalaApi. Плеер получает только готовый URL.
+
+## 5. Надёжность
+
+### 5.1 Сессия
+- Старт с сохранённым логином: тихий вход, на экране последний канал из кэша и «Подключение…».
+- Проактивное обновление токена за 1 ч до `UserTokenExpiredTime`.
+- Реактивно: признак потерянной сессии → перелогин (общий через Mutex) → повтор исходного запроса один раз.
+- Неверный логин/пароль → без повторов, сообщение «Нужна помощь: неверный логин» (родители зовут администратора).
+- Если основной EPG-домен недоступен — пробуем `epghttpsdomainbackup` (если непустой).
+
+### 5.2 Политика повторов (общая для логина, загрузки данных и плеера)
+- Автоматически до **5 попыток** с паузами 2, 4, 8, 16, 30 с.
+- Затем диалог «Не удаётся подключиться к Zala» с одной кнопкой **«Повторить»** (в фокусе). Пока диалог открыт —
+  никаких автоматических запросов.
+- Исключение: переход сети «нет → есть» (NetworkMonitor) запускает **одну** автоматическую попытку даже при открытом диалоге;
+  при успехе диалог закрывается.
+- Успешное воспроизведение/запрос сбрасывает счётчик.
+
+### 5.3 Плеер
+- Watchdog: буферизация > 12 с или позиция не движется при `isPlaying` > 12 с → новый URL и перезапуск (засчитывается как попытка).
+- `BehindLiveWindowException` → `seekToDefaultPosition()` без новой попытки.
+- Прочие ошибки (сеть, HTTP 4xx/5xx сегментов/манифеста) → новый URL, перезапуск по политике 5.2.
+- Запись при сбое переподключается и продолжает с сохранённой позиции.
+- `onStop` — плеер освобождается; `onStart` — создаётся заново со свежим URL (выход из сна, возврат после Home).
+- Качество «Авто» — адаптивный выбор дорожки Media3; «Максимальное» — ограничение выбора наибольшей дорожкой.
+
+### 5.4 Сеть
+- Таймауты OkHttp: connect 10 с, read 15 с. Никаких сетевых вызовов в главном потоке.
+- Каналы и EPG показываются из кэша сразу, обновляются в фоне.
+- Без сети: «Нет интернета, ждём…»; появление сети → немедленная попытка.
+
+## 6. Тестирование
+
+- **Фикстуры**: реальные ответы (логин 1–4, каналы, подписка, playurl, EPG, auth архива, HTML `channel_tvod_play`),
+  очищенные от токенов, cookie, `userid` и паролей; лежат в `app/src/test/resources/fixtures/`.
+- **Unit (JUnit)**: `ZalaParsers` (приоритет — `tvodPlayUrl` и нестрогий JS-объект), `ZalaApi` на MockWebServer
+  (формирование запросов, разбор ответов), `SessionManager` (перелогин при потере сессии, единый перелогин для
+  параллельных запросов, неверный пароль без повторов, проактивное обновление), `RetryPolicy` с фейковыми часами
+  (расписание, лимит 5, `NeedsUserRetry`, сброс, попытка при возврате сети), watchdog, логика EPG (дни, Europe/Minsk,
+  текущая передача, окно архива 48 ч).
+- **Smoke-скрипт** (ручной запуск администратором, `tools/smoke`): реальный логин → каналы → playurl → манифест →
+  запись → манифест записи. Цель — быстро увидеть изменения на стороне Zala. Читает `.env`, секреты не печатает.
+- **Ручная проверка**: эмулятор Android TV (навигация с D-pad), затем Mi Box.
+
+## 7. Сборка и установка
+
+- Сборка: `./gradlew assembleRelease` (подпись локальным keystore администратора) → `zala-tv.apk`.
+- Скрипт `tools/install.sh <IP>`: `adb connect <IP>:5555 && adb install -r zala-tv.apk`.
+- На Mi Box: включить режим разработчика и отладку (по сети/USB). Логин/пароль вводятся с пульта при первом запуске.
+- Обновление той же командой; настройки и логин сохраняются (одинаковая подпись).
+
+## 8. Риски
+
+| Риск | Смягчение |
+|---|---|
+| Zala меняет портал/параметры | API изолирован в `ZalaApi`/`ZalaParsers`; smoke-скрипт; фикстуры |
+| Сервер начнёт требовать DRM для `jitpdrmType=NO` | Обнаруживается smoke-скриптом; потребует отдельного исследования (Widevine L1/L3 на Mi Box) |
+| Ссылки потока истекают в процессе просмотра | Watchdog + свежий URL при любой ошибке |
+| Mi Box мало памяти | Один плеер, ограниченный кэш EPG (5 дней × видимые каналы по запросу) |
+| Ввод пароля на экранной клавиатуре | Разовая операция администратора, принято |

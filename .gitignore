@@ -1,0 +1,14 @@
+# secrets & captures
+.env
+*.har
+# decompiled original app (reference only)
+ZALAyasna-TV-v1.1.28/
+# android/gradle
+.gradle/
+build/
+local.properties
+*.keystore
+*.jks
+.idea/
+*.iml
+.DS_Store
