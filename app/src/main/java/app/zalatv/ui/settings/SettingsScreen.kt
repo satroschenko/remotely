@@ -64,7 +64,7 @@ private enum class Page { MAIN, CHANNELS, DIAGNOSTICS }
 fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit) {
     var page by remember { mutableStateOf(Page.MAIN) }
     BackHandler { if (page == Page.MAIN) onBack() else page = Page.MAIN }
-    Column(Modifier.fillMaxSize().background(Palette.Background).padding(horizontal = 80.dp, vertical = 48.dp)) {
+    Column(Modifier.fillMaxSize().background(Palette.Background).padding(horizontal = 48.dp, vertical = 28.dp)) {
         when (page) {
             Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
             Page.CHANNELS -> ChannelsPage(c)
@@ -75,7 +75,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
 
 @Composable
 private fun Title(text: String) {
-    Text(text, fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 24.dp))
+    Text(text, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 16.dp))
 }
 
 @Composable
@@ -88,10 +88,10 @@ private fun Item(text: String, value: String? = null, modifier: Modifier = Modif
         border = FocusStyle.border(),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
     ) {
-        Row(Modifier.padding(horizontal = 28.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, fontSize = 28.sp)
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, fontSize = 20.sp)
             Spacer(Modifier.weight(1f))
-            if (value != null) Text(value, fontSize = 26.sp, color = Palette.Focus)
+            if (value != null) Text(value, fontSize = 19.sp, color = Palette.Focus)
         }
     }
 }
@@ -179,7 +179,7 @@ private fun ChannelsPage(c: AppContainer) {
     Title("Каналы")
     Text(
         if (moving != null) "Перемещение: ↑ ↓ — двигать, OK — готово" else "OK на канале — избранное, скрыть, переместить",
-        fontSize = 22.sp, color = Palette.TextDim, modifier = Modifier.padding(bottom = 16.dp),
+        fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
     )
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -253,9 +253,9 @@ private fun DiagnosticsPage(c: AppContainer) {
 
     Title("Диагностика")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-        Text("Сеть: ${if (net) "есть" else "нет"}", fontSize = 24.sp, color = Palette.Text)
-        Text("Сессия: $sessionText", fontSize = 24.sp, color = Palette.Text)
-        Text("Плеер: ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 24.sp, color = Palette.Text)
+        Text("Сеть: ${if (net) "есть" else "нет"}", fontSize = 18.sp, color = Palette.Text)
+        Text("Сессия: $sessionText", fontSize = 18.sp, color = Palette.Text)
+        Text("Плеер: ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 18.sp, color = Palette.Text)
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
         items(events.withIndex().toList(), key = { it.index }) { (i, e) ->
@@ -267,8 +267,8 @@ private fun DiagnosticsPage(c: AppContainer) {
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(ZalaTime.relativeLabel(e.timeMs, now), fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.width(220.dp))
-                    Text(e.text, fontSize = 20.sp, color = Palette.Text)
+                    Text(ZalaTime.relativeLabel(e.timeMs, now), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.width(150.dp))
+                    Text(e.text, fontSize = 15.sp, color = Palette.Text)
                 }
             }
         }

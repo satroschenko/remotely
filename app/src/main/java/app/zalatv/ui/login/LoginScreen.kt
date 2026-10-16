@@ -24,6 +24,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -47,6 +49,8 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val loginFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     fun submit() {
         if (busy) return
@@ -59,6 +63,8 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
         scope.launch {
             try {
                 session.loginWith(login, password)
+                keyboard?.hide()
+                focusManager.clearFocus(force = true)
                 onLoggedIn()
             } catch (e: BadCredentialsException) {
                 error = "Неверный логин или пароль"
@@ -71,12 +77,12 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize().background(Palette.Background), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Text("Zala TV — вход", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Zala TV — вход", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             Field("Логин", login, { login = it }, false, Modifier.focusRequester(loginFocus))
             Field("Пароль", password, { password = it }, true, Modifier, onDone = ::submit)
             BigButton(if (busy) "Вход…" else "Войти", ::submit)
-            error?.let { Text(it, fontSize = 24.sp, color = Palette.Record) }
+            error?.let { Text(it, fontSize = 18.sp, color = Palette.Record) }
         }
     }
     LaunchedEffect(Unit) { runCatching { loginFocus.requestFocus() } }
@@ -93,12 +99,12 @@ private fun Field(
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, fontSize = 22.sp, color = Palette.TextDim)
+        Text(label, fontSize = 16.sp, color = Palette.TextDim)
         BasicTextField(
             value = value,
             onValueChange = onChange,
             singleLine = true,
-            textStyle = TextStyle(color = Palette.Text, fontSize = 28.sp),
+            textStyle = TextStyle(color = Palette.Text, fontSize = 22.sp),
             cursorBrush = SolidColor(Palette.Focus),
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(
@@ -107,11 +113,11 @@ private fun Field(
             ),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onDone?.invoke() }),
             modifier = modifier
-                .width(600.dp)
+                .width(420.dp)
                 .onFocusChanged { focused = it.isFocused }
                 .border(3.dp, if (focused) Palette.Focus else Palette.TextDim, RoundedCornerShape(10.dp))
                 .background(Palette.Row, RoundedCornerShape(10.dp))
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         )
     }
 }

@@ -234,6 +234,17 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun openMenu() = _ui.update { it.copy(overlay = Overlay.MENU) }
 
+    /** Leaving to settings: come back to plain fullscreen on the current channel. */
+    fun resetOverlays() {
+        previewJob?.cancel()
+        _ui.update { it.copy(overlay = Overlay.NONE, epg = null, dialog = null, focused = it.current) }
+        val cur = _ui.value.current
+        val t = player.state.value.target
+        if (cur != null && _ui.value.archive == null && t is PlaybackTarget.Live && t.channel.code != cur.code) {
+            player.play(PlaybackTarget.Live(cur))
+        }
+    }
+
     fun selectMode(m: ListMode) {
         _ui.update { it.copy(mode = m, overlay = Overlay.LIST) }
     }

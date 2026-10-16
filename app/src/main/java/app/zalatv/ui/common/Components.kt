@@ -49,8 +49,8 @@ fun BigButton(
     ) {
         Text(
             text,
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
-            fontSize = 26.sp,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            fontSize = 20.sp,
             fontWeight = FontWeight.Medium,
         )
     }
@@ -62,13 +62,13 @@ fun MessageDialog(title: String, message: String?, buttons: List<Pair<String, ()
     val first = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Color(0xAA000000)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.widthIn(max = 900.dp).clip(RoundedCornerShape(20.dp)).background(Palette.PanelSolid).padding(40.dp),
+            Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(16.dp)).background(Palette.PanelSolid).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(title, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Palette.Text, textAlign = TextAlign.Center)
-            if (message != null) Text(message, fontSize = 24.sp, color = Palette.TextDim, textAlign = TextAlign.Center)
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text, textAlign = TextAlign.Center)
+            if (message != null) Text(message, fontSize = 18.sp, color = Palette.TextDim, textAlign = TextAlign.Center)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 buttons.forEachIndexed { i, (label, action) ->
                     BigButton(label, action, focusRequester = if (i == 0) first else null)
                 }

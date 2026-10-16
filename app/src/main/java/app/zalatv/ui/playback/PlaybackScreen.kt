@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     val lists by vm.lists.collectAsState()
     val settings by vm.settings.collectAsState()
     val rootFocus = remember { FocusRequester() }
+    val okArmed = remember { booleanArrayOf(false) }
 
     DisposableEffect(Unit) {
         if (ps.phase == Phase.IDLE && ps.target != null) vm.player.start()
@@ -56,7 +58,9 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
 
     val blocking = ps.phase == Phase.NEEDS_USER_RETRY || ps.phase == Phase.BAD_CREDENTIALS || ui.channelsFailed
     val fullscreenKeys = ui.overlay == Overlay.NONE && ui.dialog == null && !blocking
-    LaunchedEffect(fullscreenKeys) { if (fullscreenKeys) runCatching { rootFocus.requestFocus() } }
+    LaunchedEffect(fullscreenKeys) {
+        if (fullscreenKeys) repeat(10) { if (runCatching { rootFocus.requestFocus() }.isSuccess) return@LaunchedEffect; delay(50) }
+    }
 
     val withPanel = ui.overlay != Overlay.NONE
 
@@ -64,8 +68,6 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .focusRequester(rootFocus)
-            .focusable()
             .onPreviewKeyEvent { ev ->
                 val down = ev.type == KeyEventType.KeyDown
                 val up = ev.type == KeyEventType.KeyUp
@@ -93,19 +95,27 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         Key.DirectionRight -> { if (down && !repeat) vm.epgDay(+1); true }
                         else -> false
                     }
-                    Overlay.NONE -> if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat)
+                    Overlay.NONE -> {
+                        val isOk = ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter
+                        if (isOk && down) okArmed[0] = true
+                        if (isOk && up && !okArmed[0]) return@onPreviewKeyEvent true
+                        if (isOk && up) okArmed[0] = false
+                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat)
+                    }
                 }
-            },
+            }
+            .focusRequester(rootFocus)
+            .focusable(),
     ) {
         VideoSurface(
             c.engine.player,
-            if (withPanel) Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 40.dp).size(560.dp, 315.dp).clip(RoundedCornerShape(12.dp))
+            if (withPanel) Modifier.align(Alignment.TopEnd).padding(top = PreviewTop, end = PreviewEnd).size(PreviewWidth, PreviewHeight).clip(RoundedCornerShape(10.dp))
             else Modifier.fillMaxSize(),
         )
 
         when (ui.overlay) {
             Overlay.LIST -> ChannelPanel(vm, ui, lists, settings.favorites)
-            Overlay.MENU -> { ChannelPanel(vm, ui, lists, settings.favorites, dimmed = true); SideMenu(vm, onOpenSettings) }
+            Overlay.MENU -> { ChannelPanel(vm, ui, lists, settings.favorites, dimmed = true); SideMenu(vm) { vm.resetOverlays(); onOpenSettings() } }
             Overlay.EPG -> ui.epg?.let { EpgPanel(vm, it) }
             Overlay.NONE -> Unit
         }
@@ -114,7 +124,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ui.archive?.let { ArchiveOverlay(it, ps.paused, vm) }
         if (ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible) ui.current?.let { Banner(it, ui.now, ui.next, vm.nowMs()) }
 
-        StatusPill(ps.phase)
+        StatusPill(ps.phase, overPreview = withPanel)
         ui.toast?.let { Toast(it) }
 
         when (val d = ui.dialog) {

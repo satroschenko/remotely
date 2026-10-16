@@ -28,6 +28,9 @@ object ZalaParsers {
         else -> v.toString()
     }
 
+    /** Portal double-escapes quotes in titles: `Т/с \"След\"`. */
+    private fun JsonObject.text(key: String): String = str(key).replace("\\\"", "\"").replace("\\'", "'").trim()
+
     private fun JsonObject.code(): String = str("ReturnCode").ifEmpty { str("returncode") }.ifEmpty { str("returnCode") }
 
     private fun requireLoginOk(o: JsonObject) {
@@ -88,14 +91,14 @@ object ZalaParsers {
             if (code.isEmpty() || number == null) return@mapNotNull null
             Channel(
                 code = code,
-                name = c.str("channelname"),
+                name = c.text("channelname"),
                 number = number,
                 mixno = c.str("mixno"),
                 columnCode = c.str("columncode").ifEmpty { "0803" },
                 definition = c.str("definition").ifEmpty { "1" },
                 logoUrl = logoUrl(c.str("posterimage"), epgBase),
                 hasArchive = c.str("tvodavailable") == "1",
-                nowTitle = c.str("prevuename"),
+                nowTitle = c.text("prevuename"),
                 nowStartMs = ZalaTime.parseUtc(c.str("utcbegintime")) ?: 0,
                 nowEndMs = ZalaTime.parseUtc(c.str("utcendtime")) ?: 0,
             )
@@ -126,9 +129,9 @@ object ZalaParsers {
             Programme(
                 code = p.str("prevuecode"),
                 channelCode = p.str("channelcode"),
-                title = p.str("prevuename"),
-                description = p.str("description"),
-                genre = p.str("genre"),
+                title = p.text("prevuename"),
+                description = p.text("description"),
+                genre = p.text("genre"),
                 startMs = start,
                 endMs = end,
                 recorded = p.str("istimeshift") == "1",

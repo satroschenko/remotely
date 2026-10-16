@@ -49,6 +49,11 @@ class ZalaParsersTest {
         assertEquals(ZalaTime.parseUtc("2026.10.15 18:35:00"), ont.nowStartMs)
     }
 
+    @Test fun escapedQuotesAreCleaned() {
+        val body = "{\"returncode\":\"0\",\"data\":[{\"channelname\":\"X\",\"usermixno\":1,\"channelcode\":\"c\",\"prevuename\":\"Т/с \\\\\\\"След\\\\\\\" (16+)\"}]}"
+        assertEquals("Т/с \"След\" (16+)", ZalaParsers.channels(body, epg)[0].nowTitle)
+    }
+
     @Test fun logoVariants() {
         assertNull(ZalaParsers.logoUrl("", epg))
         assertEquals("http://x/y.png", ZalaParsers.logoUrl("http://x/y.png", epg))

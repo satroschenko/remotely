@@ -1,6 +1,7 @@
 package app.zalatv
 
 import android.os.Bundle
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.media3.common.util.UnstableApi
 import app.zalatv.data.session.SessionState
 import app.zalatv.data.store.Settings
@@ -57,6 +59,17 @@ private fun AppRoot(c: AppContainer) {
     LaunchedEffect(Unit) { screen = if (c.hasCredentials()) Screen.PLAYBACK else Screen.LOGIN }
     LaunchedEffect(sessionState) {
         if (sessionState == SessionState.LoggedOut && screen != Screen.LOADING && !c.hasCredentials()) screen = Screen.LOGIN
+    }
+
+    // Leaving the login screen: detach the on-screen keyboard, otherwise Gboard for TV
+    // can keep swallowing D-pad keys even though it is hidden.
+    val view = LocalView.current
+    LaunchedEffect(screen) {
+        if (screen != Screen.LOGIN) {
+            val imm = view.context.getSystemService(InputMethodManager::class.java)
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+            imm.restartInput(view)
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Palette.Background)) {
