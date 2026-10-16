@@ -1,5 +1,15 @@
 package app.zalatv.ui.playback
 
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +62,34 @@ import coil.compose.AsyncImage
 
 private val PanelShape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
 
+/** Keeps the focused row at ~30% from the top and scrolls there with a short eased animation. */
+@OptIn(ExperimentalFoundationApi::class)
+private val PivotScroll = object : BringIntoViewSpec {
+    override val scrollAnimationSpec: AnimationSpec<Float> = tween(200, easing = FastOutSlowInEasing)
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        offset - (containerSize * 0.3f - size / 2).coerceAtLeast(0f)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SmoothList(state: LazyListState, padding: PaddingValues, spacing: Dp, content: LazyListScope.() -> Unit) {
+    CompositionLocalProvider(LocalBringIntoViewSpec provides PivotScroll) {
+        LazyColumn(state = state, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(spacing), content = content)
+    }
+}
+
+@Composable
+private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
+    Row(
+        Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF26324A)).padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (arrowFirst) Text("$arrow ", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
+        Text(label, fontSize = 17.sp, fontWeight = FontWeight.Medium, color = Palette.Text)
+        if (!arrowFirst) Text(" $arrow", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
+    }
+}
+
 // TV canvas is 960x540 dp. Panels take the left side, the preview sits top-right.
 const val PANEL_FRACTION = 0.56f
 val PreviewWidth = 384.dp
@@ -77,17 +115,15 @@ fun BoxScope.ChannelPanel(vm: PlaybackViewModel, ui: PlaybackUi, lists: ChannelL
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (mode == ListMode.FAVORITES) "★ Избранное" else "Все каналы", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             Spacer(Modifier.weight(1f))
-            Text("← меню   → программа", fontSize = 14.sp, color = Palette.TextDim)
+            HintChip("◀", "Меню", arrowFirst = true)
+            Spacer(Modifier.width(10.dp))
+            HintChip("▶", "Программа", arrowFirst = false)
         }
         Spacer(Modifier.height(12.dp))
         if (list.isEmpty()) {
             Text("Загрузка каналов…", fontSize = 26.sp, color = Palette.TextDim, modifier = Modifier.padding(32.dp))
         }
-        LazyColumn(
-            state = state,
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp) {
             itemsIndexed(list, key = { _, ch -> ch.code }) { i, ch ->
                 ChannelRow(
                     ch = ch,
@@ -131,7 +167,7 @@ private fun ChannelRow(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
         border = FocusStyle.border(),
-        scale = FocusStyle.scale(),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${ch.number}", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.width(44.dp))
@@ -157,18 +193,20 @@ private fun ChannelRow(
 
 @UnstableApi
 @Composable
-fun BoxScope.SideMenu(vm: PlaybackViewModel, onOpenSettings: () -> Unit) {
+fun BoxScope.SideMenu(vm: PlaybackViewModel, onOpenSettings: () -> Unit, onExit: () -> Unit) {
     val first = remember { FocusRequester() }
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-        MenuItem("★ Избранное", Modifier.focusRequester(first)) {
+        MenuItem("Все каналы", Modifier.focusRequester(first)) { vm.selectMode(ListMode.ALL) }
+        MenuItem("★ Избранное") {
             if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
         }
-        MenuItem("Все каналы") { vm.selectMode(ListMode.ALL) }
         MenuItem("⚙ Настройки", onClick = onOpenSettings)
+        Spacer(Modifier.weight(1f))
+        MenuItem("✕ Выход", onClick = onExit)
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
@@ -223,7 +261,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
         Text("${e.channel.number}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("◀", fontSize = 18.sp, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
+            Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
             e.days.forEachIndexed { i, d ->
                 val sel = i == e.dayIndex
                 Text(
@@ -234,18 +272,14 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if (sel) Palette.Focus else Color.Transparent).padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
-            Text("▶", fontSize = 18.sp, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim)
+            Text("▶", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim)
         }
         Spacer(Modifier.height(12.dp))
         when {
             e.loading -> Text("Загрузка…", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
             e.items.isEmpty() -> Text("Нет программы на этот день", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
         }
-        LazyColumn(
-            state = state,
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 32.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp) {
             itemsIndexed(e.items, key = { _, p -> p.code + p.startMs }) { i, p ->
                 ProgrammeRow(
                     p, now, vm.canRecord(e.channel, p),
@@ -283,7 +317,7 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = FocusStyle.colors(if (onAir) Color(0xFF243B55) else Palette.Row),
         border = FocusStyle.border(),
-        scale = FocusStyle.scale(),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(ZalaTime.hhmm(p.startMs), fontSize = 20.sp, color = if (past) Palette.TextDim else Palette.Text, modifier = Modifier.width(68.dp))

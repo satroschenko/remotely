@@ -67,8 +67,26 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         player.prepare()
     }
 
+    private var maxQuality = false
+    private var preview = false
+
     override fun setMaxQuality(max: Boolean) {
-        trackSelector.parameters = trackSelector.buildUponParameters().setForceHighestSupportedBitrate(max).build()
+        maxQuality = max
+        applyTrackLimits()
+    }
+
+    /** Small preview window: cap decoding at 1024x576 so flipping channels stays light. */
+    fun setPreview(enabled: Boolean) {
+        if (preview == enabled) return
+        preview = enabled
+        applyTrackLimits()
+    }
+
+    private fun applyTrackLimits() {
+        val b = trackSelector.buildUponParameters()
+        if (preview) b.setMaxVideoSize(1024, 576).setForceHighestSupportedBitrate(false)
+        else b.clearVideoSizeConstraints().setForceHighestSupportedBitrate(maxQuality)
+        trackSelector.parameters = b.build()
     }
 
     override val state: EngineState

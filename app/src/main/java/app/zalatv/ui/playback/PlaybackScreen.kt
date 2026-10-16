@@ -1,12 +1,26 @@
 package app.zalatv.ui.playback
 
 import android.view.ViewGroup
+import android.app.Activity
+import android.view.LayoutInflater
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import app.zalatv.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -17,7 +31,6 @@ import androidx.compose.runtime.remember
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -31,11 +44,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.zalatv.AppContainer
 import app.zalatv.player.Phase
 import app.zalatv.ui.common.MessageDialog
+
+private val PanelEnter = fadeIn(tween(180)) + slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { -it / 6 }
+private val PanelExit = fadeOut(tween(150)) + slideOutHorizontally(tween(180)) { -it / 8 }
 
 @UnstableApi
 @Composable
@@ -46,6 +61,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     val lists by vm.lists.collectAsState()
     val settings by vm.settings.collectAsState()
     val rootFocus = remember { FocusRequester() }
+    val activity = LocalContext.current as? Activity
     val okArmed = remember { booleanArrayOf(false) }
 
     DisposableEffect(Unit) {
@@ -107,19 +123,26 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             .focusRequester(rootFocus)
             .focusable(),
     ) {
-        VideoSurface(
-            c.engine.player,
-            if (withPanel) Modifier.align(Alignment.TopEnd).padding(top = PreviewTop, end = PreviewEnd).size(PreviewWidth, PreviewHeight).clip(RoundedCornerShape(10.dp))
-            else Modifier.fillMaxSize(),
-        )
+        VideoSurface(c.engine.player, preview = withPanel)
+        LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
 
-        when (ui.overlay) {
-            Overlay.LIST -> ChannelPanel(vm, ui, lists, settings.favorites)
-            Overlay.MENU -> { ChannelPanel(vm, ui, lists, settings.favorites, dimmed = true); SideMenu(vm) { vm.resetOverlays(); onOpenSettings() } }
-            Overlay.EPG -> ui.epg?.let { EpgPanel(vm, it) }
-            Overlay.NONE -> Unit
+        AnimatedVisibility(
+            visible = ui.overlay == Overlay.LIST || ui.overlay == Overlay.MENU,
+            enter = PanelEnter, exit = PanelExit,
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU)
+                PreviewInfo(ui, vm)
+            }
         }
-        if (withPanel && ui.overlay != Overlay.EPG) PreviewInfo(ui, vm)
+        AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = PanelEnter, exit = PanelExit) {
+            Box(Modifier.fillMaxSize()) {
+                SideMenu(vm, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = { activity?.finish() })
+            }
+        }
+        AnimatedVisibility(visible = ui.overlay == Overlay.EPG && ui.epg != null, enter = PanelEnter, exit = PanelExit) {
+            Box(Modifier.fillMaxSize()) { ui.epg?.let { EpgPanel(vm, it) } }
+        }
 
         ui.archive?.let { ArchiveOverlay(it, ps.paused, vm) }
         if (ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible) ui.current?.let { Banner(it, ui.now, ui.next, vm.nowMs()) }
@@ -168,21 +191,34 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     else -> false
 }
 
+/** Fullscreen ↔ preview by animating a graphics layer: no relayout, no SurfaceView resize jank. */
 @Composable
-private fun VideoSurface(exo: Player, modifier: Modifier) {
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                useController = false
-                keepScreenOn = true
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                isFocusable = false
-                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                player = exo
-            }
-        },
-        modifier = modifier,
-    )
+private fun VideoSurface(exo: Player, preview: Boolean) {
+    val t by animateFloatAsState(if (preview) 1f else 0f, tween(220, easing = FastOutSlowInEasing), label = "video")
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val fullW = maxWidth
+        val scale = 1f - t * (1f - PreviewWidth / fullW)
+        val tx = with(density) { ((fullW - PreviewEnd - PreviewWidth) * t).toPx() }
+        val ty = with(density) { (PreviewTop * t).toPx() }
+        AndroidView(
+            factory = { ctx ->
+                (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).apply {
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                    player = exo
+                }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = tx
+                    translationY = ty
+                    shape = RoundedCornerShape((10f * t / scale.coerceAtLeast(0.01f)).dp)
+                    clip = t > 0f
+                },
+        )
+    }
 }
