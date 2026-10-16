@@ -5,12 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 IP="${1:?usage: tools/install.sh <box-ip> [debug|release]}"
 VARIANT="${2:-release}"
-if [[ "$VARIANT" == release && ! -f release.jks ]]; then
-  echo "Creating release keystore release.jks (keep it: updates must be signed with the same key)"
-  "$(/usr/libexec/java_home -v 21)/bin/keytool" -genkeypair -keystore release.jks -alias zalatv \
-    -storepass "${ZALATV_KS_PASS:-zalatv-release}" -keypass "${ZALATV_KS_PASS:-zalatv-release}" \
-    -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Zala TV"
-fi
+[[ "$VARIANT" == release ]] && tools/make-keystore.sh
 TASK="assemble$(tr '[:lower:]' '[:upper:]' <<< "${VARIANT:0:1}")${VARIANT:1}"
 tools/gw.sh -q ":app:$TASK"
 APK="app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"

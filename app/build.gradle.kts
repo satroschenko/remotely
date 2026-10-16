@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,14 +19,17 @@ android {
         versionName = "1.0"
     }
 
+    // Release signing comes from keystore.properties (git-ignored, created by tools/make-keystore.sh).
+    val ksProps = rootProject.file("keystore.properties")
+    val hasKeystore = ksProps.exists()
     signingConfigs {
-        create("release") {
-            val ks = rootProject.file("release.jks")
-            if (ks.exists()) {
-                storeFile = ks
-                storePassword = System.getenv("ZALATV_KS_PASS") ?: "zalatv-release"
-                keyAlias = "zalatv"
-                keyPassword = System.getenv("ZALATV_KS_PASS") ?: "zalatv-release"
+        if (hasKeystore) {
+            val p = Properties().apply { ksProps.inputStream().use { load(it) } }
+            create("release") {
+                storeFile = rootProject.file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
             }
         }
     }
@@ -32,7 +37,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (rootProject.file("release.jks").exists()) signingConfig = signingConfigs.getByName("release")
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
