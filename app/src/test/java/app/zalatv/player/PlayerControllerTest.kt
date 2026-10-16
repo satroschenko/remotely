@@ -29,6 +29,9 @@ class FakeEngine : MediaEngine {
     override val durationMs = 0L
     override var progressMarker = 0L
     var liveSeeks = 0
+    override var renderedFrames: Long? = null
+    var videoRestarts = 0
+    override fun restartVideo() { videoRestarts++ }
     override fun setListener(listener: MediaEngine.Listener?) { l = listener }
     override fun open(url: String, isLive: Boolean, startPositionMs: Long) {
         opened += url to startPositionMs; state = EngineState.BUFFERING; playWhenReady = true
@@ -132,6 +135,65 @@ class PlayerControllerTest {
         runCurrent()
         assertEquals(2, e.opened.size)
         assertTrue(e.opened[1].first.endsWith("-2"))
+    }
+
+    /** Sound plays (media time moves) but no new video frames. */
+    private suspend fun TestScope.freezePicture(e: FakeEngine, ms: Long) {
+        repeat((ms / 1_000).toInt()) {
+            e.progressMarker += 1_000
+            advanceTimeBy(1_000)
+            runCurrent()
+        }
+    }
+
+    @Test fun frozenPictureRestartsVideoThenStream() = runTest {
+        val (c, e, _) = setup()
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        e.ready()
+        e.renderedFrames = 100
+        freezePicture(e, 5_000)
+        assertEquals(0, e.videoRestarts) // short hiccup is fine
+        freezePicture(e, 3_000)
+        assertEquals(1, e.videoRestarts)
+        assertEquals(1, e.opened.size)
+        freezePicture(e, 8_000) // decoder restart did not help
+        assertEquals(1, e.videoRestarts)
+        assertEquals(2, e.opened.size)
+        assertTrue(e.opened[1].first.endsWith("-2"))
+    }
+
+    @Test fun movingPictureOrPauseOrNoVideoIsNotFrozen() = runTest {
+        val (c, e, _) = setup()
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        e.ready()
+        e.renderedFrames = 0
+        repeat(30) {
+            e.renderedFrames = e.renderedFrames!! + 25
+            freezePicture(e, 1_000)
+        }
+        c.setPaused(true)
+        advanceTimeBy(30_000)
+        runCurrent()
+        c.setPaused(false)
+        e.renderedFrames = null // e.g. radio: no video track
+        freezePicture(e, 30_000)
+        assertEquals(0, e.videoRestarts)
+        assertEquals(1, e.opened.size)
+    }
+
+    @Test fun rareFreezesOnlyRestartVideo() = runTest {
+        val (c, e, _) = setup()
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        e.ready()
+        e.renderedFrames = 1
+        freezePicture(e, 8_000)
+        repeat(90) { e.renderedFrames = e.renderedFrames!! + 25; freezePicture(e, 1_000) }
+        freezePicture(e, 8_000)
+        assertEquals(2, e.videoRestarts)
+        assertEquals(1, e.opened.size)
     }
 
     @Test fun behindLiveWindowJustSeeks() = runTest {

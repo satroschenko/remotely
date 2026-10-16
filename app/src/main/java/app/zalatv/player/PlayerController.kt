@@ -42,6 +42,10 @@ interface MediaEngine {
     val durationMs: Long
     /** Monotonic media time (live: window start + position) used by the watchdog. */
     val progressMarker: Long
+    /** Video frames rendered so far (any change = picture alive); null when no video is shown. */
+    val renderedFrames: Long?
+    /** Rebuild the video decoder while audio keeps playing. */
+    fun restartVideo()
 }
 
 sealed interface PlaybackTarget {
@@ -73,6 +77,7 @@ class PlayerController(
     private val log: EventLog,
     private val policy: RetryPolicy = RetryPolicy(),
     private val watchdog: Watchdog = Watchdog(),
+    private val freeze: VideoFreezeDetector = VideoFreezeDetector(),
 ) : MediaEngine.Listener {
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state
@@ -84,6 +89,8 @@ class PlayerController(
     private var networkUp = true
     /** Last known archive position, used to resume after reconnects. */
     private var archivePositionMs = 0L
+    /** When the video decoder was last restarted because of a frozen picture. */
+    private var freezeFixAt: Long? = null
 
     init {
         engine.setListener(this)
@@ -109,6 +116,7 @@ class PlayerController(
                     is PlaybackTarget.Archive -> streams.archiveUrl(target.channel, target.programme)
                 }
                 watchdog.reset(clock.nowMs())
+                freeze.reset(clock.nowMs())
                 engine.open(url, target is PlaybackTarget.Live, if (target is PlaybackTarget.Archive) archivePositionMs else 0)
                 ensureTicking()
             } catch (e: CancellationException) {
@@ -137,6 +145,26 @@ class PlayerController(
         if (watchdog.tick(clock.nowMs(), engine.state, engine.playWhenReady, engine.progressMarker)) {
             log.add("Плеер завис — перезапуск")
             fail(IllegalStateException("stalled"))
+            return
+        }
+        checkFrozenPicture(s.target ?: return)
+    }
+
+    /** Sound plays but the picture stands still: first rebuild the video decoder, then the whole stream. */
+    private fun checkFrozenPicture(target: PlaybackTarget) {
+        val now = clock.nowMs()
+        val playing = engine.state == EngineState.READY && engine.playWhenReady
+        if (!freeze.tick(now, playing, engine.renderedFrames)) return
+        val lastFix = freezeFixAt
+        if (lastFix != null && now - lastFix < FREEZE_REPEAT_MS) {
+            log.add("Картинка снова застыла — перезапуск потока")
+            freezeFixAt = null
+            engine.stop()
+            open(target, Phase.RECONNECTING)
+        } else {
+            log.add("Картинка застыла (звук идёт) — перезапуск видео")
+            freezeFixAt = now
+            engine.restartVideo()
         }
     }
 
@@ -171,6 +199,11 @@ class PlayerController(
                 setPhase(Phase.NEEDS_USER_RETRY)
             }
         }
+    }
+
+    private companion object {
+        /** A second freeze this soon after a decoder restart means the restart did not help. */
+        const val FREEZE_REPEAT_MS = 60_000L
     }
 
     private fun setPhase(p: Phase) = _state.update { it.copy(phase = p) }
@@ -219,6 +252,7 @@ class PlayerController(
         archivePositionMs = positionMs
         engine.seekTo(positionMs)
         watchdog.reset(clock.nowMs())
+        freeze.reset(clock.nowMs())
     }
 
     fun setMaxQuality(max: Boolean) = engine.setMaxQuality(max)

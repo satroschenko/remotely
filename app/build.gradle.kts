@@ -15,8 +15,8 @@ android {
         applicationId = "app.zalatv"
         minSdk = 28
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     // Release signing comes from keystore.properties (git-ignored, created by tools/make-keystore.sh).

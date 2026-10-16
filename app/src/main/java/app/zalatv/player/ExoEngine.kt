@@ -1,6 +1,8 @@
 package app.zalatv.player
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -69,6 +71,19 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
 
     private var maxQuality = false
     private var preview = false
+    private var videoOff = false
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Switching the video track off and on releases the decoder; audio is not interrupted. */
+    override fun restartVideo() {
+        if (videoOff) return
+        videoOff = true
+        applyTrackLimits()
+        main.postDelayed({
+            videoOff = false
+            applyTrackLimits()
+        }, 300)
+    }
 
     override fun setMaxQuality(max: Boolean) {
         maxQuality = max
@@ -86,6 +101,7 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         val b = trackSelector.buildUponParameters()
         if (preview) b.setMaxVideoSize(1024, 576).setForceHighestSupportedBitrate(false)
         else b.clearVideoSizeConstraints().setForceHighestSupportedBitrate(maxQuality)
+        b.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, videoOff)
         trackSelector.parameters = b.build()
     }
 
@@ -107,5 +123,12 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
                 if (window.windowStartTimeMs != C.TIME_UNSET) return window.windowStartTimeMs + player.currentPosition
             }
             return player.currentPosition
+        }
+    override val renderedFrames: Long?
+        get() {
+            if (videoOff || player.surfaceSize.width == 0) return null
+            val counters = player.videoDecoderCounters ?: return null
+            counters.ensureUpdated()
+            return counters.renderedOutputBufferCount.toLong()
         }
 }

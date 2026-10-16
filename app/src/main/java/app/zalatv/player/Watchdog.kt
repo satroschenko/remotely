@@ -33,3 +33,34 @@ class Watchdog(private val limitMs: Long = 12_000) {
         return now - lastProgressAt > limitMs
     }
 }
+
+/**
+ * Detects a frozen picture while sound plays on: the player is READY and playing,
+ * but the video decoder has rendered no new frame for [limitMs].
+ * [frames] is null when there is no video output to watch (no video track, no surface).
+ */
+class VideoFreezeDetector(private val limitMs: Long = 6_000) {
+    private var lastFrames: Long? = null
+    private var lastFrameAt = 0L
+
+    fun reset(now: Long) {
+        lastFrames = null
+        lastFrameAt = now
+    }
+
+    /** @return true when the video should be restarted. */
+    fun tick(now: Long, playing: Boolean, frames: Long?): Boolean {
+        if (!playing || frames == null) {
+            reset(now)
+            return false
+        }
+        if (frames != lastFrames) {
+            lastFrames = frames
+            lastFrameAt = now
+            return false
+        }
+        if (now - lastFrameAt <= limitMs) return false
+        reset(now)
+        return true
+    }
+}
