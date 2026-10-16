@@ -1,6 +1,12 @@
 package app.zalatv.ui.playback
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.getValue
+import app.zalatv.ui.common.AnimatedNullable
+import app.zalatv.ui.common.Motion
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -72,9 +78,9 @@ private val PivotScroll = object : BringIntoViewSpec {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SmoothList(state: LazyListState, padding: PaddingValues, spacing: Dp, content: LazyListScope.() -> Unit) {
+private fun SmoothList(state: LazyListState, padding: PaddingValues, spacing: Dp, modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
     CompositionLocalProvider(LocalBringIntoViewSpec provides PivotScroll) {
-        LazyColumn(state = state, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(spacing), content = content)
+        LazyColumn(modifier = modifier, state = state, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(spacing), content = content)
     }
 }
 
@@ -264,12 +270,14 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
             Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
             e.days.forEachIndexed { i, d ->
                 val sel = i == e.dayIndex
+                val bg by animateColorAsState(if (sel) Palette.Focus else Color.Transparent, tween(200), label = "tab")
+                val fg by animateColorAsState(if (sel) Color.Black else Palette.TextDim, tween(200), label = "tabText")
                 Text(
                     d.label,
                     fontSize = 18.sp,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                    color = if (sel) Color.Black else Palette.TextDim,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if (sel) Palette.Focus else Color.Transparent).padding(horizontal = 10.dp, vertical = 4.dp),
+                    color = fg,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
             Text("▶", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim)
@@ -279,7 +287,8 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
             e.loading -> Text("Загрузка…", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
             e.items.isEmpty() -> Text("Нет программы на этот день", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
         }
-        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp) {
+        val listAlpha by animateFloatAsState(if (e.loading) 0f else 1f, tween(if (e.loading) 90 else 220), label = "epgList")
+        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp, Modifier.alpha(listAlpha)) {
             itemsIndexed(e.items, key = { _, p -> p.code + p.startMs }) { i, p ->
                 ProgrammeRow(
                     p, now, vm.canRecord(e.channel, p),
@@ -334,9 +343,9 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
 }
 
 @Composable
-fun BoxScope.Banner(ch: Channel, now: Programme?, next: Programme?, nowMs: Long) {
+fun Banner(ch: Channel, now: Programme?, next: Programme?, nowMs: Long) {
     Column(
-        Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
+        Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -375,11 +384,15 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Text("● ЗАПИСЬ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
         Text("  ·  ${ZalaTime.relativeLabel(p.startMs, now)}", fontSize = 18.sp, color = Palette.Text)
     }
-    if (!a.controlsVisible && !paused) return
     val duration = (p.endMs - p.startMs).coerceAtLeast(1)
     val shownWall = a.seekTargetMs ?: (p.startMs + a.positionMs)
+    AnimatedVisibility(
+        visible = a.controlsVisible || paused,
+        modifier = Modifier.align(Alignment.BottomCenter),
+        enter = Motion.fromBottom, exit = Motion.toBottom,
+    ) {
     Column(
-        Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
+        Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -395,6 +408,7 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
             Text(ZalaTime.hhmm(p.endMs), fontSize = 16.sp, color = Palette.TextDim)
         }
         Text("OK — пауза    ← → — 30 сек (держать — быстрее)    ↑ ↓ — 5 мин    Назад — в эфир", fontSize = 14.sp, color = Palette.TextDim)
+    }
     }
 }
 
@@ -414,22 +428,29 @@ fun BoxScope.StatusPill(phase: Phase, overPreview: Boolean) {
         Phase.CONNECTING -> "Подключение…"
         Phase.RECONNECTING -> "Восстанавливаем показ…"
         Phase.NO_NETWORK -> "Нет интернета, ждём…"
-        else -> return
+        else -> null
     }
-    Text(
+    AnimatedNullable(
         text,
-        fontSize = if (overPreview) 16.sp else 22.sp,
-        color = Palette.Text,
-        modifier = (if (overPreview) Modifier.align(Alignment.TopEnd).padding(top = PreviewTop + PreviewHeight / 2 - 20.dp, end = PreviewEnd + PreviewWidth / 2 - 90.dp) else Modifier.align(Alignment.Center)).clip(RoundedCornerShape(16.dp)).background(Color(0xCC000000)).padding(horizontal = 32.dp, vertical = 18.dp),
-    )
+        modifier = if (overPreview) Modifier.align(Alignment.TopEnd).padding(top = PreviewTop + PreviewHeight / 2 - 20.dp, end = PreviewEnd + PreviewWidth / 2 - 90.dp)
+        else Modifier.align(Alignment.Center),
+        enter = Motion.fade, exit = Motion.unfade,
+    ) {
+        Text(
+            it,
+            fontSize = if (overPreview) 16.sp else 22.sp,
+            color = Palette.Text,
+            modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xCC000000)).padding(horizontal = 32.dp, vertical = 18.dp),
+        )
+    }
 }
 
 @Composable
-fun BoxScope.Toast(text: String) {
+fun Toast(text: String) {
     Text(
         text,
         fontSize = 20.sp,
         color = Palette.Text,
-        modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xEE1B2533)).padding(horizontal = 32.dp, vertical = 16.dp),
+        modifier = Modifier.padding(top = 24.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xEE1B2533)).padding(horizontal = 32.dp, vertical = 16.dp),
     )
 }

@@ -4,6 +4,11 @@ import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,11 +78,17 @@ private fun AppRoot(c: AppContainer) {
     }
 
     Box(Modifier.fillMaxSize().background(Palette.Background)) {
-        when (screen) {
-            Screen.LOADING -> Unit
-            Screen.LOGIN -> LoginScreen(c.session) { screen = Screen.PLAYBACK }
-            Screen.PLAYBACK -> PlaybackScreen(c, onOpenSettings = { screen = Screen.SETTINGS }, onNeedLogin = { screen = Screen.LOGIN })
-            Screen.SETTINGS -> SettingsScreen(c, onBack = { screen = Screen.PLAYBACK }, onLoggedOut = { screen = Screen.LOGIN })
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) },
+            label = "screen",
+        ) { s ->
+            when (s) {
+                Screen.LOADING -> Box(Modifier.fillMaxSize())
+                Screen.LOGIN -> LoginScreen(c.session) { screen = Screen.PLAYBACK }
+                Screen.PLAYBACK -> PlaybackScreen(c, onOpenSettings = { screen = Screen.SETTINGS }, onNeedLogin = { screen = Screen.LOGIN })
+                Screen.SETTINGS -> SettingsScreen(c, onBack = { screen = Screen.PLAYBACK }, onLoggedOut = { screen = Screen.LOGIN })
+            }
         }
     }
 }

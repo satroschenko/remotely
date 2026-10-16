@@ -4,6 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -64,11 +71,22 @@ private enum class Page { MAIN, CHANNELS, DIAGNOSTICS }
 fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit) {
     var page by remember { mutableStateOf(Page.MAIN) }
     BackHandler { if (page == Page.MAIN) onBack() else page = Page.MAIN }
-    Column(Modifier.fillMaxSize().background(Palette.Background).padding(horizontal = 48.dp, vertical = 28.dp)) {
-        when (page) {
-            Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
-            Page.CHANNELS -> ChannelsPage(c)
-            Page.DIAGNOSTICS -> DiagnosticsPage(c)
+    AnimatedContent(
+        targetState = page,
+        transitionSpec = {
+            val forward = targetState != Page.MAIN
+            (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { if (forward) it / 5 else -it / 5 }) togetherWith
+                (fadeOut(tween(160)) + slideOutHorizontally(tween(180)) { if (forward) -it / 6 else it / 6 })
+        },
+        label = "settingsPage",
+        modifier = Modifier.fillMaxSize().background(Palette.Background),
+    ) { p ->
+        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp)) {
+            when (p) {
+                Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
+                Page.CHANNELS -> ChannelsPage(c)
+                Page.DIAGNOSTICS -> DiagnosticsPage(c)
+            }
         }
     }
 }

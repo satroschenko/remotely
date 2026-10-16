@@ -7,10 +7,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,10 +43,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import app.zalatv.AppContainer
 import app.zalatv.player.Phase
+import app.zalatv.ui.common.AnimatedNullable
 import app.zalatv.ui.common.MessageDialog
-
-private val PanelEnter = fadeIn(tween(180)) + slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { -it / 6 }
-private val PanelExit = fadeOut(tween(150)) + slideOutHorizontally(tween(180)) { -it / 8 }
+import app.zalatv.ui.common.Motion
+import androidx.compose.foundation.layout.fillMaxWidth
 
 @UnstableApi
 @Composable
@@ -128,49 +124,57 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
 
         AnimatedVisibility(
             visible = ui.overlay == Overlay.LIST || ui.overlay == Overlay.MENU,
-            enter = PanelEnter, exit = PanelExit,
+            enter = Motion.fromLeft, exit = Motion.toLeft,
         ) {
             Box(Modifier.fillMaxSize()) {
                 ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU)
                 PreviewInfo(ui, vm)
             }
         }
-        AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = PanelEnter, exit = PanelExit) {
+        AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
             Box(Modifier.fillMaxSize()) {
                 SideMenu(vm, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = { activity?.finish() })
             }
         }
-        AnimatedVisibility(visible = ui.overlay == Overlay.EPG && ui.epg != null, enter = PanelEnter, exit = PanelExit) {
-            Box(Modifier.fillMaxSize()) { ui.epg?.let { EpgPanel(vm, it) } }
+        AnimatedNullable(ui.epg.takeIf { ui.overlay == Overlay.EPG }, enter = Motion.fromRight, exit = Motion.toRight) { epg ->
+            Box(Modifier.fillMaxSize()) { EpgPanel(vm, epg) }
         }
 
         ui.archive?.let { ArchiveOverlay(it, ps.paused, vm) }
-        if (ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible) ui.current?.let { Banner(it, ui.now, ui.next, vm.nowMs()) }
+        AnimatedNullable(
+            ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = Motion.fromBottom, exit = Motion.toBottom,
+        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, ui.now, ui.next, vm.nowMs()) } }
 
         StatusPill(ps.phase, overPreview = withPanel)
-        ui.toast?.let { Toast(it) }
+        AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
 
-        when (val d = ui.dialog) {
-            is Dialog.Favorite -> MessageDialog(
+        val dialog: DialogSpec? = when (val d = ui.dialog) {
+            is Dialog.Favorite -> DialogSpec(
                 d.channel.name, null,
                 listOf((if (d.isFavorite) "Убрать из избранного" else "★ Добавить в избранное") to { vm.toggleFavorite(d.channel) }, "Отмена" to vm::dismissDialog),
             )
-            is Dialog.StartOver -> MessageDialog(
+            is Dialog.StartOver -> DialogSpec(
                 d.programme.title, "Передача идёт сейчас",
                 listOf("Смотреть эфир" to { vm.watchLiveFromDialog(d.channel) }, "⟲ С начала" to { vm.playArchive(d.channel, d.programme, 0) }),
             )
-            Dialog.ExitArchive -> MessageDialog(
+            Dialog.ExitArchive -> DialogSpec(
                 "Вы смотрите запись", null,
                 listOf("Вернуться в прямой эфир" to vm::backToLive, "Продолжить запись" to vm::dismissDialog),
             )
             null -> when {
-                ui.channelsFailed -> MessageDialog("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))
-                ps.phase == Phase.NEEDS_USER_RETRY -> MessageDialog("Не удаётся подключиться к Zala", "Проверьте интернет и нажмите «Повторить»", listOf("Повторить" to vm::retryPlayer))
-                ps.phase == Phase.BAD_CREDENTIALS -> MessageDialog("Нужна помощь: неверный логин", "Попросите помочь с настройкой", listOf("Настройки" to onOpenSettings))
+                ui.channelsFailed -> DialogSpec("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))
+                ps.phase == Phase.NEEDS_USER_RETRY -> DialogSpec("Не удаётся подключиться к Zala", "Проверьте интернет и нажмите «Повторить»", listOf("Повторить" to vm::retryPlayer))
+                ps.phase == Phase.BAD_CREDENTIALS -> DialogSpec("Нужна помощь: неверный логин", "Попросите помочь с настройкой", listOf("Настройки" to onOpenSettings))
+                else -> null
             }
         }
+        AnimatedNullable(dialog, enter = Motion.pop, exit = Motion.unpop) { MessageDialog(it.title, it.message, it.buttons) }
     }
 }
+
+private data class DialogSpec(val title: String, val message: String?, val buttons: List<Pair<String, () -> Unit>>)
 
 private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean): Boolean = when (key) {
     Key.DirectionUp, Key.ChannelUp -> { if (down && !repeat) vm.stepChannel(+1); true }
