@@ -100,12 +100,15 @@ private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
 }
 
 // TV canvas is 960x540 dp. Panels take the left side, the preview sits top-right.
-const val PANEL_FRACTION = 0.52f
+const val CHANNEL_PANEL_FRACTION = 0.40f
+/** The programme panel needs room for the day tabs. */
+const val EPG_PANEL_FRACTION = 0.52f
 val PreviewWidth = 320.dp
 val PreviewHeight = 180.dp
 val PreviewTop = 24.dp
-// Centred in the free area right of the panel: (960 * (1 - 0.52) - 320) / 2 ≈ 70.
-val PreviewEnd = 70.dp
+// Centred in the free area right of the channel list: (960 * (1 - 0.40) - 320) / 2 = 128.
+val PreviewEnd = 128.dp
+private val InfoSide = 24.dp
 private val ChannelRowHeight = 72.dp
 private val InfoTop = PreviewTop + PreviewHeight + 12.dp
 
@@ -119,15 +122,19 @@ fun BoxScope.ChannelPanel(vm: PlaybackViewModel, ui: PlaybackUi, lists: ChannelL
     val focus = remember { FocusRequester() }
 
     Column(
-        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(PANEL_FRACTION)
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(CHANNEL_PANEL_FRACTION)
             .clip(PanelShape).background(Palette.Panel).padding(top = 20.dp)
             .alpha(if (dimmed) 0.5f else 1f),
     ) {
-        Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (mode == ListMode.FAVORITES) "★ Избранное" else "Все каналы", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-            Spacer(Modifier.weight(1f))
+        Text(
+            if (mode == ListMode.FAVORITES) "★ Избранное" else "Все каналы", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        // Narrow panel: hints get their own line under the title.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             HintChip("◀", "Меню", arrowFirst = true)
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.weight(1f))
             HintChip("▶", "Программа", arrowFirst = false)
         }
         Spacer(Modifier.height(12.dp))
@@ -246,7 +253,8 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel) {
     val now = vm.nowMs()
     val loaded = ui.focusedUpcoming.filter { it.endMs > now }
     Column(
-        Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(top = InfoTop, end = PreviewEnd, bottom = 16.dp).width(PreviewWidth),
+        Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(1f - CHANNEL_PANEL_FRACTION)
+            .padding(top = InfoTop, start = InfoSide, end = InfoSide, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text("${ch.number}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -314,7 +322,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     val focus = remember { FocusRequester() }
 
     Column(
-        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(EPG_PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
     ) {
         Text("${e.channel.number}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
