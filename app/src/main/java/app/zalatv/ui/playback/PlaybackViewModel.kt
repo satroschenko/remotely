@@ -65,7 +65,8 @@ data class PlaybackUi(
     val bannerVisible: Boolean = false,
     val now: Programme? = null,
     val next: Programme? = null,
-    val focusedNext: Programme? = null,
+    /** Current and following programmes of the focused channel (list overlay). */
+    val focusedUpcoming: List<Programme> = emptyList(),
     val epg: EpgUi? = null,
     val archive: ArchiveUi? = null,
     val dialog: Dialog? = null,
@@ -191,13 +192,32 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     // ---- list overlay ----
 
     fun openList() {
-        _ui.update { it.copy(overlay = Overlay.LIST, focused = it.current, bannerVisible = false) }
+        _ui.update { it.copy(overlay = Overlay.LIST, focused = it.current, focusedUpcoming = emptyList(), bannerVisible = false) }
+        _ui.value.current?.let(::loadUpcoming)
         viewModelScope.launch { runCatching { c.channels.refresh() } }
+    }
+
+    private var upcomingJob: Job? = null
+
+    /** Programme under the preview: short debounce so fast scrolling does not fetch every channel. */
+    private fun loadUpcoming(ch: Channel) {
+        upcomingJob?.cancel()
+        upcomingJob = viewModelScope.launch {
+            delay(250)
+            val list = runCatching {
+                val now = c.clock.nowMs()
+                val today = ZalaTime.localDate(now)
+                val all = c.epg.day(ch.code, today) + runCatching { c.epg.day(ch.code, today.plusDays(1)) }.getOrDefault(emptyList())
+                EpgLogic.upcoming(all, now)
+            }.getOrDefault(emptyList())
+            _ui.update { u -> if (u.focused?.code == ch.code) u.copy(focusedUpcoming = list) else u }
+        }
     }
 
     fun onListFocus(ch: Channel) {
         if (_ui.value.focused?.code == ch.code && _ui.value.overlay == Overlay.LIST) return
-        _ui.update { it.copy(focused = ch, focusedNext = null) }
+        _ui.update { it.copy(focused = ch, focusedUpcoming = emptyList()) }
+        loadUpcoming(ch)
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
             delay(1_000)
@@ -205,7 +225,6 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             if (_ui.value.overlay == Overlay.LIST && (t !is PlaybackTarget.Live || t.channel.code != ch.code)) {
                 player.play(PlaybackTarget.Live(ch))
             }
-            loadNowNext(ch)?.let { (_, x) -> _ui.update { u -> if (u.focused?.code == ch.code) u.copy(focusedNext = x) else u } }
         }
     }
 

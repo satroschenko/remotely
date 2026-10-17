@@ -55,4 +55,12 @@ class RepoLogicTest {
         assertFalse(EpgLogic.canPlayRecording(p("13 20:00:00", "13 21:00:00"), c, now, EpgLogic.DEFAULT_DEPTH_MS))
         assertEquals(0.5f, EpgLogic.progress(list[1].startMs, list[1].endMs, now), 0.001f)
     }
+
+    @Test fun upcomingStartsWithOnAirAndSkipsDuplicates() {
+        val today = listOf(p("15 21:00:00", "15 21:30:00"), p("15 21:30:00", "15 22:30:00"), p("15 23:30:00", "16 00:30:00"), p("15 22:30:00", "15 23:30:00"))
+        val tomorrow = listOf(p("15 23:30:00", "16 00:30:00"), p("16 00:30:00", "16 01:00:00")) // crosses midnight: listed in both days
+        val up = EpgLogic.upcoming(today + tomorrow, now)
+        assertEquals(listOf("p15 21:30:00", "p15 22:30:00", "p15 23:30:00", "p16 00:30:00"), up.map { it.code })
+        assertEquals(2, EpgLogic.upcoming(today + tomorrow, now, limit = 2).size)
+    }
 }

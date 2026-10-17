@@ -50,6 +50,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -97,11 +100,13 @@ private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
 }
 
 // TV canvas is 960x540 dp. Panels take the left side, the preview sits top-right.
-const val PANEL_FRACTION = 0.56f
-val PreviewWidth = 384.dp
-val PreviewHeight = 216.dp
+const val PANEL_FRACTION = 0.52f
+val PreviewWidth = 320.dp
+val PreviewHeight = 180.dp
 val PreviewTop = 24.dp
-val PreviewEnd = 20.dp
+// Centred in the free area right of the panel: (960 * (1 - 0.52) - 320) / 2 ≈ 70.
+val PreviewEnd = 70.dp
+private val ChannelRowHeight = 72.dp
 private val InfoTop = PreviewTop + PreviewHeight + 12.dp
 
 @UnstableApi
@@ -175,7 +180,8 @@ private fun ChannelRow(
         border = FocusStyle.border(),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Fixed height: always the name line and the programme line, so every row looks the same.
+        Row(Modifier.height(ChannelRowHeight).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${ch.number}", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.width(44.dp))
             Box(Modifier.size(56.dp, 36.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF26324A)), contentAlignment = Alignment.Center) {
                 if (ch.logoUrl != null) AsyncImage(ch.logoUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
@@ -187,10 +193,11 @@ private fun ChannelRow(
                     Text(ch.name, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (favorite) Text("  ★", fontSize = 20.sp, color = Palette.Focus)
                 }
-                if (ch.nowTitle.isNotBlank() && now < ch.nowEndMs) {
-                    Text(ch.nowTitle, fontSize = 16.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(4.dp))
-                    ProgressBar(EpgLogic.progress(ch.nowStartMs, ch.nowEndMs, now), Modifier.fillMaxWidth(0.8f))
+                val known = ch.nowTitle.isNotBlank() && now < ch.nowEndMs
+                Text(if (known) ch.nowTitle else "—", fontSize = 16.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(4.dp))
+                Box(Modifier.height(6.dp).fillMaxWidth(0.8f)) {
+                    if (known) ProgressBar(EpgLogic.progress(ch.nowStartMs, ch.nowEndMs, now), Modifier.fillMaxWidth())
                 }
             }
         }
@@ -231,25 +238,70 @@ private fun MenuItem(text: String, modifier: Modifier = Modifier, onClick: () ->
     }
 }
 
-/** Info under the preview window about the focused channel. */
+/** Under the preview: the focused channel's programme — now on air, then as many next ones as fit. */
 @UnstableApi
 @Composable
 fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel) {
     val ch = ui.focused ?: ui.current ?: return
     val now = vm.nowMs()
+    val loaded = ui.focusedUpcoming.filter { it.endMs > now }
     Column(
-        Modifier.align(Alignment.TopEnd).padding(top = InfoTop, end = PreviewEnd).width(PreviewWidth),
+        Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(top = InfoTop, end = PreviewEnd, bottom = 16.dp).width(PreviewWidth),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("${ch.number}. ${ch.name}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-        if (ch.nowTitle.isNotBlank() && now < ch.nowEndMs) {
-            Text("Сейчас: ${ZalaTime.hhmm(ch.nowStartMs)}–${ZalaTime.hhmm(ch.nowEndMs)}", fontSize = 16.sp, color = Palette.Accent)
-            Text(ch.nowTitle, fontSize = 20.sp, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        ui.focusedNext?.takeIf { ui.focused?.code == ch.code }?.let {
-            Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 17.sp, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("${ch.number}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
+            if (loaded.isNotEmpty()) {
+                loaded.forEach { p -> UpcomingRow(p.startMs, p.endMs, p.title, now) }
+            } else if (ch.nowTitle.isNotBlank() && now < ch.nowEndMs) {
+                // Programme not loaded yet: what the channel list already knows.
+                UpcomingRow(ch.nowStartMs, ch.nowEndMs, ch.nowTitle, now)
+            }
         }
         Text("OK — смотреть · удерживать OK — избранное", fontSize = 14.sp, color = Palette.TextDim)
+    }
+}
+
+@Composable
+private fun UpcomingRow(startMs: Long, endMs: Long, title: String, now: Long) {
+    val onAir = now >= startMs && now < endMs
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                ZalaTime.hhmm(startMs), fontSize = 17.sp, color = if (onAir) Palette.Accent else Palette.TextDim,
+                fontWeight = if (onAir) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.width(56.dp),
+            )
+            Text(
+                title, fontSize = 17.sp, color = if (onAir) Palette.Text else Palette.TextDim,
+                fontWeight = if (onAir) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (onAir) {
+            Spacer(Modifier.height(4.dp))
+            ProgressBar(EpgLogic.progress(startMs, endMs, now), Modifier.padding(start = 56.dp).fillMaxWidth())
+        }
+    }
+}
+
+/** Column that places only the children that fit completely — no half-cut row at the bottom. */
+@Composable
+private fun FitColumn(modifier: Modifier, spacing: Dp, content: @Composable () -> Unit) {
+    Layout(content, modifier.clipToBounds()) { measurables, constraints ->
+        val gap = spacing.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = mutableListOf<Placeable>()
+        var used = 0
+        for (m in measurables) {
+            val p = m.measure(loose)
+            val needed = if (placeables.isEmpty()) p.height else gap + p.height
+            if (used + needed > constraints.maxHeight) break
+            placeables += p
+            used += needed
+        }
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            var y = 0
+            placeables.forEach { it.placeRelative(0, y); y += it.height + gap }
+        }
     }
 }
 

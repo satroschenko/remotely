@@ -28,6 +28,10 @@ object EpgLogic {
 
     fun next(list: List<Programme>, nowMs: Long): Programme? = list.firstOrNull { it.startMs > nowMs }
 
+    /** The programme on air now followed by the next ones, in time order, without duplicates. */
+    fun upcoming(list: List<Programme>, nowMs: Long, limit: Int = 12): List<Programme> =
+        list.filter { it.endMs > nowMs }.distinctBy { it.code + it.startMs }.sortedBy { it.startMs }.take(limit)
+
     /** A recording can be played if the channel has archive, it already started and is inside the archive window. */
     fun canPlayRecording(p: Programme, ch: Channel, nowMs: Long, depthMs: Long): Boolean =
         ch.hasArchive && p.startMs < nowMs && p.startMs >= nowMs - depthMs
