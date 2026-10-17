@@ -100,14 +100,14 @@ private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
 }
 
 // TV canvas is 960x540 dp. Panels take the left side, the preview sits top-right.
-const val CHANNEL_PANEL_FRACTION = 0.40f
+const val CHANNEL_PANEL_FRACTION = 0.45f
 /** The programme panel needs room for the day tabs. */
 const val EPG_PANEL_FRACTION = 0.52f
 val PreviewWidth = 320.dp
 val PreviewHeight = 180.dp
 val PreviewTop = 24.dp
-// Centred in the free area right of the channel list: (960 * (1 - 0.40) - 320) / 2 = 128.
-val PreviewEnd = 128.dp
+// Centred in the free area right of the channel list: (960 * (1 - 0.45) - 320) / 2 = 104.
+val PreviewEnd = 104.dp
 private val InfoSide = 24.dp
 private val ChannelRowHeight = 72.dp
 private val InfoTop = PreviewTop + PreviewHeight + 12.dp
