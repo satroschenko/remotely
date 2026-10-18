@@ -15,3 +15,4 @@ local.properties
 release.jks
 keystore.properties
 dist/
+keys-zalatv-old/
