@@ -8,15 +8,15 @@ plugins {
 }
 
 android {
-    namespace = "app.zalatv"
+    namespace = "app.remotely"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.zalatv"
+        applicationId = "app.remotely"
         minSdk = 28
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     // Release signing comes from keystore.properties (git-ignored, created by tools/make-keystore.sh).

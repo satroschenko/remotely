@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.ZalaTV" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Remotely" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:colorBackground">@android:color/black</item>
         <item name="android:windowNoTitle">true</item>

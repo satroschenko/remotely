@@ -10,13 +10,13 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application
-        android:name=".ZalaApp"
+        android:name=".RemotelyApp"
         android:allowBackup="false"
         android:banner="@drawable/banner"
         android:icon="@drawable/banner"
         android:label="@string/app_name"
         android:supportsRtl="false"
-        android:theme="@style/Theme.ZalaTV">
+        android:theme="@style/Theme.Remotely">
 
         <activity
             android:name=".MainActivity"

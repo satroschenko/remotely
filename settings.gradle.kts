@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "ZalaTV"
+rootProject.name = "Remotely"
 include(":app")
