@@ -1,6 +1,7 @@
 package app.remotely.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,9 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -58,13 +61,16 @@ fun BigButton(
     }
 }
 
-/** Centered modal card with a message and buttons; the first button gets focus. */
+/** Centered modal card with a message and buttons; the first button gets focus and cannot leave the card. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MessageDialog(title: String, message: String?, buttons: List<Pair<String, () -> Unit>>) {
     val first = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Color(0xAA000000)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(16.dp)).background(Palette.PanelSolid).padding(28.dp),
+            Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(16.dp)).background(Palette.PanelSolid).padding(28.dp)
+                // The screen behind stays composed: without this the arrows walk out to its buttons.
+                .focusProperties { exit = { FocusRequester.Cancel } }.focusGroup(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

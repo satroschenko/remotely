@@ -79,23 +79,55 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.gestures.scrollBy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val PanelShape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
 
-/** Keeps the focused row at ~30% from the top and scrolls there with a short eased animation. */
-@OptIn(ExperimentalFoundationApi::class)
-private val PivotScroll = object : BringIntoViewSpec {
-    override val scrollAnimationSpec: AnimationSpec<Float> = tween(200, easing = FastOutSlowInEasing)
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-        offset - (containerSize * 0.3f - size / 2).coerceAtLeast(0f)
+/** A fully visible row needs no scroll; a cut or hidden one is scrolled just up to the edge, so the focus stays pinned there. */
+private fun edgeDelta(offset: Float, size: Float, containerSize: Float): Float = when {
+    offset < 0 -> offset
+    offset + size > containerSize -> offset + size - containerSize
+    else -> 0f
 }
+
+/** Scrolls only as far as needed, with a short eased animation. */
+@OptIn(ExperimentalFoundationApi::class)
+private val EdgeScroll = object : BringIntoViewSpec {
+    override val scrollAnimationSpec: AnimationSpec<Float> = tween(150, easing = FastOutSlowInEasing)
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = edgeDelta(offset, size, containerSize)
+}
+
+/** True when moving focus to the row needs a scroll first. */
+private fun LazyListState.needsScroll(index: Int): Boolean {
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return true
+    return edgeDelta((item.offset - info.viewportStartOffset).toFloat(), item.size.toFloat(), (info.viewportEndOffset - info.viewportStartOffset).toFloat()) != 0f
+}
+
+/** Same placement as [EdgeScroll], but at once. A row just past an edge is estimated from its neighbour (rows share one height). */
+private suspend fun LazyListState.reveal(index: Int) {
+    val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    val first = visible.firstOrNull() ?: return scrollToItem(index)
+    val last = visible.last()
+    val step = first.size + info.mainAxisItemSpacing
+    val offset = when {
+        index < first.index - 1 || index > last.index + 1 -> return scrollToItem(index) // far jump (wrap): the list clamps at its end
+        index < first.index -> first.offset - step
+        index > last.index -> last.offset + step
+        else -> visible.first { it.index == index }.offset
+    }
+    val delta = edgeDelta((offset - info.viewportStartOffset).toFloat(), first.size.toFloat(), (info.viewportEndOffset - info.viewportStartOffset).toFloat())
+    if (delta != 0f) scrollBy(delta)
+}
+
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SmoothList(state: LazyListState, padding: PaddingValues, spacing: Dp, modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
-    CompositionLocalProvider(LocalBringIntoViewSpec provides PivotScroll) {
+    CompositionLocalProvider(LocalBringIntoViewSpec provides EdgeScroll) {
         LazyColumn(modifier = modifier, state = state, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(spacing), content = content)
     }
 }
@@ -142,7 +174,9 @@ fun BoxScope.ChannelPanel(
         mutableIntStateOf(list.indexOfFirst { it.code == (ui.focused ?: ui.current)?.code }.coerceAtLeast(0))
     }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (focusIndex - 3).coerceAtLeast(0))
-    val focus = remember { FocusRequester() }
+    // One requester per row: focus can then move in the same frame the list scrolls, with no in-between frame.
+    val requesters = remember(mode) { HashMap<String, FocusRequester>() }
+    fun requester(index: Int) = requesters.getOrPut(list[index].code) { FocusRequester() }
     val scope = rememberCoroutineScope()
     // Progress bars only need a fresh clock now and then; reading it on every recomposition redraws every row.
     val now by produceState(vm.nowMs()) { while (true) { delay(30_000); value = vm.nowMs() } }
@@ -151,9 +185,12 @@ fun BoxScope.ChannelPanel(
     fun jumpTo(index: Int) {
         focusIndex = index
         scope.launch {
-            state.scrollToItem((index - 3).coerceAtLeast(0))
-            withFrameNanos { }
-            runCatching { focus.requestFocus() }
+            // The scroll re-lays the list out at once, so the row is in place before the next frame is drawn.
+            state.reveal(index)
+            if (runCatching { requester(index).requestFocus() }.isFailure) {
+                withFrameNanos { }
+                runCatching { requester(index).requestFocus() }
+            }
         }
     }
 
@@ -194,6 +231,9 @@ fun BoxScope.ChannelPanel(
                     up && focusIndex == 0 -> { if (!repeat) jumpTo(list.lastIndex); true }
                     ev.key == Key.ChannelUp -> { jumpTo(focusIndex - 1); true }
                     ev.key == Key.ChannelDown -> { jumpTo(focusIndex + 1); true }
+                    // Next row cut by the edge or off screen: scroll and move the focus together, so the focus stays
+                    // at the edge and the list moves under it. Rows fully on screen are left to the normal focus move.
+                    state.needsScroll(if (up) focusIndex - 1 else focusIndex + 1) -> { jumpTo(if (up) focusIndex - 1 else focusIndex + 1); true }
                     else -> false
                 }
             },
@@ -205,7 +245,7 @@ fun BoxScope.ChannelPanel(
                     playing = ch.code == ui.current?.code,
                     favorite = ch.code in favorites,
                     now = now,
-                    modifier = if (i == focusIndex) Modifier.focusRequester(focus) else Modifier,
+                    modifier = Modifier.focusRequester(requesters.getOrPut(ch.code) { FocusRequester() }),
                     onFocus = { focusIndex = i; vm.onListFocus(ch) },
                     onClick = { vm.onListSelect(ch) },
                     onLongClick = { vm.askFavorite(ch) },
@@ -220,7 +260,7 @@ fun BoxScope.ChannelPanel(
             val visible = state.layoutInfo.visibleItemsInfo
             if (visible.none { it.index == focusIndex }) state.scrollToItem((focusIndex - 3).coerceAtLeast(0))
             withFrameNanos { }
-            runCatching { focus.requestFocus() }
+            runCatching { requester(focusIndex).requestFocus() }
         }
     }
 }
