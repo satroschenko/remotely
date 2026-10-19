@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -39,11 +40,19 @@ private val colors = darkColorScheme(
 /** Scale applied on top of system font scale; LARGE is the default for parents. */
 enum class FontSize(val scale: Float) { LARGE(1.0f), XLARGE(1.25f) }
 
+/** The layout is drawn for a 960x540 dp screen. */
+private const val CANVAS_WIDTH_DP = 960f
+private const val CANVAS_HEIGHT_DP = 540f
+
 @Composable
 fun RemotelyTheme(fontSize: FontSize = FontSize.LARGE, content: @Composable () -> Unit) {
     val density = LocalDensity.current
+    // Boxes differ in screen density (a 1080p box may report 1280 or 960 dp wide), which would shrink or grow
+    // the whole UI. Fit the 960x540 canvas to the screen instead, so every TV looks the same.
+    val metrics = LocalContext.current.resources.displayMetrics
+    val canvas = minOf(metrics.widthPixels / CANVAS_WIDTH_DP, metrics.heightPixels / CANVAS_HEIGHT_DP)
     CompositionLocalProvider(
-        LocalDensity provides Density(density.density, density.fontScale * fontSize.scale),
+        LocalDensity provides Density(if (canvas > 0f) canvas else density.density, density.fontScale * fontSize.scale),
     ) {
         MaterialTheme(colorScheme = colors, content = content)
     }

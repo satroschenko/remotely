@@ -148,11 +148,11 @@ private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
 const val CHANNEL_PANEL_FRACTION = 0.45f
 /** The programme panel needs room for the day tabs. */
 const val EPG_PANEL_FRACTION = 0.52f
-val PreviewWidth = 320.dp
-val PreviewHeight = 180.dp
+val PreviewWidth = 416.dp
+val PreviewHeight = 234.dp
 val PreviewTop = 24.dp
-// Centred in the free area right of the channel list: (960 * (1 - 0.45) - 320) / 2 = 104.
-val PreviewEnd = 104.dp
+// Keeps clear of the programme panel (960 * 0.52 = 499 < 960 - 40 - 416 = 504), close to centred right of the channel list.
+val PreviewEnd = 40.dp
 private val InfoSide = 24.dp
 private val ChannelRowHeight = 72.dp
 private val InfoTop = PreviewTop + PreviewHeight + 12.dp
