@@ -145,7 +145,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = Motion.fromBottom, exit = Motion.toBottom,
-        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, ui.now, ui.next, vm.nowMs()) } }
+        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs()) } }
 
         StatusPill(ps.phase, overPreview = withPanel)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }

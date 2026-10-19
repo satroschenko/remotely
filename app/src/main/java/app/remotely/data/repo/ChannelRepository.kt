@@ -22,7 +22,12 @@ data class ChannelLists(
     val favorites: List<Channel>,
     /** Everything subscribed incl. hidden (settings screen). */
     val manageable: List<Channel>,
-)
+) {
+    /** Numbers follow the user order (1, 2, 3...), like in the official app; the portal number is kept for the API. */
+    private val numbers: Map<String, Int> = all.withIndex().associate { it.value.code to it.index + 1 }
+
+    fun numberOf(ch: Channel): Int = numbers[ch.code] ?: ch.number
+}
 
 object ChannelArranger {
     fun arrange(snapshot: ChannelSnapshot, s: Settings): ChannelLists {

@@ -33,6 +33,12 @@ class RepoLogicTest {
         assertEquals(listOf("c", "a", "b"), l.manageable.map { it.code })
     }
 
+    @Test fun numbersFollowUserOrder() {
+        val l = ChannelArranger.arrange(snap, Settings(hidden = setOf("b"), order = listOf("c")))
+        assertEquals(listOf(1, 2), l.all.map { l.numberOf(it) }) // c=1, a=2; hidden b does not take a number
+        assertEquals(7, l.numberOf(ch("zz", 7))) // unknown channel keeps the portal number
+    }
+
     private val now = ZalaTime.parseMinsk("2026.10.15 22:00:00")!!
 
     @Test fun daysLimitedByDepth() {

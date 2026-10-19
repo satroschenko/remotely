@@ -250,6 +250,8 @@ private fun ChannelsPage(c: AppContainer) {
             if (moving != null) "Перемещение: ↑ ↓ — двигать канал, OK или Назад — готово" else "OK на канале — избранное, скрыть, переместить",
             fontSize = 18.sp, color = if (moving != null) Palette.Focus else Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
         )
+        // Same numbering as the playback list: position among visible channels, updated live while moving.
+        val numbers = order.filter { it.code !in s.hidden }.withIndex().associate { it.value.code to it.index + 1 }
         LazyColumn(
             state = listState,
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -280,7 +282,7 @@ private fun ChannelsPage(c: AppContainer) {
                 val tags = listOfNotNull("★".takeIf { fav }, "скрыт".takeIf { hidden }, "↕ двигается".takeIf { moving == ch.code }).joinToString("  ")
                 val isAnchor = ch.code == anchor || (anchor == null && i == 0)
                 Item(
-                    "${ch.number}. ${ch.name}", tags,
+                    "${numbers[ch.code]?.let { "$it. " } ?: ""}${ch.name}", tags,
                     modifier = if (isAnchor) Modifier.focusRequester(anchorFocus) else Modifier,
                 ) {
                     anchor = ch.code

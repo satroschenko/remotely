@@ -201,6 +201,7 @@ fun BoxScope.ChannelPanel(
             itemsIndexed(list, key = { _, ch -> ch.code }) { i, ch ->
                 ChannelRow(
                     ch = ch,
+                    number = lists.numberOf(ch),
                     playing = ch.code == ui.current?.code,
                     favorite = ch.code in favorites,
                     now = now,
@@ -229,6 +230,7 @@ private const val LIST_REPEAT_MS = 90L
 @Composable
 private fun ChannelRow(
     ch: Channel,
+    number: Int,
     playing: Boolean,
     favorite: Boolean,
     now: Long,
@@ -250,7 +252,7 @@ private fun ChannelRow(
     ) {
         // Fixed height: always the name line and the programme line, so every row looks the same.
         Row(Modifier.height(ChannelRowHeight).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${ch.number}", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.width(44.dp))
+            Text("$number", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.width(44.dp))
             Box(Modifier.size(56.dp, 36.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF26324A)), contentAlignment = Alignment.Center) {
                 if (ch.logoUrl != null) AsyncImage(ch.logoUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             }
@@ -319,7 +321,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel) {
             .padding(top = InfoTop, start = InfoSide, end = InfoSide, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("${ch.number}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
                 loaded.forEach { p -> UpcomingRow(p.startMs, p.endMs, p.title, now) }
@@ -386,7 +388,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(EPG_PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
     ) {
-        Text("${e.channel.number}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
+        Text("${vm.lists.value.numberOf(e.channel)}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
@@ -465,13 +467,13 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
 }
 
 @Composable
-fun Banner(ch: Channel, now: Programme?, next: Programme?, nowMs: Long) {
+fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long) {
     Column(
         Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${ch.number}", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
+            Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
             Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             Spacer(Modifier.weight(1f))
