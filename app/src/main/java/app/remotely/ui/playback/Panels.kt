@@ -68,6 +68,19 @@ import app.remotely.ui.common.ProgressBar
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import coil.compose.AsyncImage
+import android.os.SystemClock
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val PanelShape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
 
@@ -114,12 +127,35 @@ private val InfoTop = PreviewTop + PreviewHeight + 12.dp
 
 @UnstableApi
 @Composable
-fun BoxScope.ChannelPanel(vm: PlaybackViewModel, ui: PlaybackUi, lists: ChannelLists, favorites: List<String>, dimmed: Boolean = false) {
+fun BoxScope.ChannelPanel(
+    vm: PlaybackViewModel,
+    ui: PlaybackUi,
+    lists: ChannelLists,
+    favorites: List<String>,
+    dimmed: Boolean = false,
+    dialogOpen: Boolean = false,
+) {
     val mode = vm.currentMode()
     val list = vm.activeList()
-    val startIndex = list.indexOfFirst { it.code == (ui.focused ?: ui.current)?.code }.coerceAtLeast(0)
-    val state = rememberLazyListState(initialFirstVisibleItemIndex = (startIndex - 3).coerceAtLeast(0))
+    // Row that owns focus; picked once per list so scrolling does not rebuild the rows around it.
+    var focusIndex by remember(mode) {
+        mutableIntStateOf(list.indexOfFirst { it.code == (ui.focused ?: ui.current)?.code }.coerceAtLeast(0))
+    }
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = (focusIndex - 3).coerceAtLeast(0))
     val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    // Progress bars only need a fresh clock now and then; reading it on every recomposition redraws every row.
+    val now by produceState(vm.nowMs()) { while (true) { delay(30_000); value = vm.nowMs() } }
+    val lastMove = remember { longArrayOf(0L) }
+
+    fun jumpTo(index: Int) {
+        focusIndex = index
+        scope.launch {
+            state.scrollToItem((index - 3).coerceAtLeast(0))
+            withFrameNanos { }
+            runCatching { focus.requestFocus() }
+        }
+    }
 
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(CHANNEL_PANEL_FRACTION)
@@ -141,29 +177,54 @@ fun BoxScope.ChannelPanel(vm: PlaybackViewModel, ui: PlaybackUi, lists: ChannelL
         if (list.isEmpty()) {
             Text("Загрузка каналов…", fontSize = 26.sp, color = Palette.TextDim, modifier = Modifier.padding(32.dp))
         }
-        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp) {
+        SmoothList(
+            state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp,
+            Modifier.onPreviewKeyEvent { ev ->
+                val up = ev.key == Key.DirectionUp || ev.key == Key.ChannelUp
+                val down = ev.key == Key.DirectionDown || ev.key == Key.ChannelDown
+                if ((!up && !down) || ev.type != KeyEventType.KeyDown || list.isEmpty()) return@onPreviewKeyEvent false
+                val repeat = ev.nativeKeyEvent.repeatCount > 0
+                val t = SystemClock.uptimeMillis()
+                // Holding the key: move at a pace the list can scroll to, instead of queueing up and freezing.
+                if (repeat && t - lastMove[0] < LIST_REPEAT_MS) return@onPreviewKeyEvent true
+                lastMove[0] = t
+                when {
+                    // Past either end: wrap around (on a fresh press only, holding stops at the end).
+                    down && focusIndex == list.lastIndex -> { if (!repeat) jumpTo(0); true }
+                    up && focusIndex == 0 -> { if (!repeat) jumpTo(list.lastIndex); true }
+                    ev.key == Key.ChannelUp -> { jumpTo(focusIndex - 1); true }
+                    ev.key == Key.ChannelDown -> { jumpTo(focusIndex + 1); true }
+                    else -> false
+                }
+            },
+        ) {
             itemsIndexed(list, key = { _, ch -> ch.code }) { i, ch ->
                 ChannelRow(
                     ch = ch,
                     playing = ch.code == ui.current?.code,
                     favorite = ch.code in favorites,
-                    now = vm.nowMs(),
-                    modifier = if (i == startIndex) Modifier.focusRequester(focus) else Modifier,
-                    onFocus = { vm.onListFocus(ch) },
+                    now = now,
+                    modifier = if (i == focusIndex) Modifier.focusRequester(focus) else Modifier,
+                    onFocus = { focusIndex = i; vm.onListFocus(ch) },
                     onClick = { vm.onListSelect(ch) },
                     onLongClick = { vm.askFavorite(ch) },
-                    enabled = !dimmed,
+                    enabled = !dimmed && !dialogOpen,
                 )
             }
         }
     }
-    LaunchedEffect(dimmed, list.size) {
-        if (!dimmed && list.isNotEmpty()) {
-            state.scrollToItem((startIndex - 3).coerceAtLeast(0))
+    LaunchedEffect(dimmed, dialogOpen, list.size) {
+        if (!dimmed && !dialogOpen && list.isNotEmpty()) {
+            focusIndex = focusIndex.coerceIn(0, list.lastIndex)
+            val visible = state.layoutInfo.visibleItemsInfo
+            if (visible.none { it.index == focusIndex }) state.scrollToItem((focusIndex - 3).coerceAtLeast(0))
+            withFrameNanos { }
             runCatching { focus.requestFocus() }
         }
     }
 }
+
+private const val LIST_REPEAT_MS = 90L
 
 @Composable
 private fun ChannelRow(
@@ -213,7 +274,7 @@ private fun ChannelRow(
 
 @UnstableApi
 @Composable
-fun BoxScope.SideMenu(vm: PlaybackViewModel, onOpenSettings: () -> Unit, onExit: () -> Unit) {
+fun BoxScope.SideMenu(vm: PlaybackViewModel, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit) {
     val first = remember { FocusRequester() }
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid).padding(24.dp),
@@ -228,7 +289,8 @@ fun BoxScope.SideMenu(vm: PlaybackViewModel, onOpenSettings: () -> Unit, onExit:
         Spacer(Modifier.weight(1f))
         MenuItem("✕ Выход", onClick = onExit)
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
+    LaunchedEffect(dialogOpen) { if (!dialogOpen) runCatching { first.requestFocus() } }
 }
 
 @Composable

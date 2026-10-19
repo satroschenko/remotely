@@ -36,6 +36,7 @@ sealed interface Dialog {
     data class Favorite(val channel: Channel, val isFavorite: Boolean) : Dialog
     data class StartOver(val channel: Channel, val programme: Programme) : Dialog
     data object ExitArchive : Dialog
+    data object ExitApp : Dialog
 }
 
 data class EpgUi(
@@ -164,12 +165,28 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         showBanner()
     }
 
-    fun stepChannel(delta: Int) {
+    private var zapJob: Job? = null
+    private var lastStepMs = 0L
+
+    /**
+     * ↑/↓ in fullscreen. The banner follows every press at once, the stream starts only when the
+     * presses stop: fast zapping does not open a stream per channel and does not stall the UI.
+     */
+    fun stepChannel(delta: Int, isRepeat: Boolean = false) {
+        val now = c.clock.nowMs()
+        if (isRepeat && now - lastStepMs < ZAP_REPEAT_MS) return
+        lastStepMs = now
         val list = activeList()
         if (list.isEmpty()) return
         val idx = list.indexOfFirst { it.code == _ui.value.current?.code }
         val next = list[((if (idx < 0) 0 else idx + delta) % list.size + list.size) % list.size]
-        switchTo(next)
+        _ui.update { it.copy(current = next, now = null, next = null) }
+        showBanner()
+        zapJob?.cancel()
+        zapJob = viewModelScope.launch {
+            delay(ZAP_SETTLE_MS)
+            switchTo(next)
+        }
     }
 
     fun showBanner() {
@@ -252,6 +269,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun openMenu() = _ui.update { it.copy(overlay = Overlay.MENU) }
+
+    fun closeMenu() = _ui.update { it.copy(overlay = Overlay.LIST) }
 
     /** Leaving to settings: come back to plain fullscreen on the current channel. */
     fun resetOverlays() {
@@ -442,17 +461,20 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     // ---- back / dialogs / toast ----
 
+    /** Back walks outwards: fullscreen → channel list → menu → "exit the app?". */
     fun onBack() {
         val u = _ui.value
         when {
             u.dialog != null -> dismissDialog()
             u.overlay == Overlay.EPG -> epgBack()
-            u.overlay == Overlay.MENU -> _ui.update { it.copy(overlay = Overlay.LIST) }
-            u.overlay == Overlay.LIST -> closeOverlays()
+            u.overlay == Overlay.MENU -> askExit()
+            u.overlay == Overlay.LIST -> openMenu()
             u.archive != null -> _ui.update { it.copy(dialog = Dialog.ExitArchive) }
-            else -> showBanner()
+            else -> openList()
         }
     }
+
+    fun askExit() = _ui.update { it.copy(dialog = Dialog.ExitApp) }
 
     fun dismissDialog() = _ui.update { it.copy(dialog = null) }
 
@@ -466,4 +488,9 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun nowMs() = c.clock.nowMs()
+
+    private companion object {
+        const val ZAP_SETTLE_MS = 300L
+        const val ZAP_REPEAT_MS = 250L
+    }
 }

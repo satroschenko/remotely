@@ -13,7 +13,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,13 +84,20 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
         label = "settingsPage",
         modifier = Modifier.fillMaxSize().background(Palette.Background),
     ) { p ->
-        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp)) {
-            when (p) {
-                Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
-                Page.CHANNELS -> ChannelsPage(c)
-                Page.DIAGNOSTICS -> DiagnosticsPage(c)
-            }
+        when (p) {
+            Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
+            Page.CHANNELS -> ChannelsPage(c)
+            Page.DIAGNOSTICS -> DiagnosticsPage(c)
         }
+    }
+}
+
+/** Page body with the dialog layered on top: inside the Column a dialog gets no height and stays invisible. */
+@Composable
+private fun PageFrame(dialog: @Composable () -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), content = content)
+        dialog()
     }
 }
 
@@ -128,50 +138,57 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         runCatching { first.requestFocus() }
     }
 
-    Title("Настройки")
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-        item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
-        item { Item("Каналы: скрыть, избранное, порядок") { open(Page.CHANNELS) } }
-        item {
-            Item("Размер шрифта", if (s.fontSize == FontSize.LARGE) "Крупный" else "Очень крупный") {
-                scope.launch { c.settings.update { it.copy(fontSize = if (it.fontSize == FontSize.LARGE) FontSize.XLARGE else FontSize.LARGE) } }
+    BackHandler(enabled = confirmLogout) { confirmLogout = false }
+    PageFrame(dialog = { if (confirmLogout) LogoutDialog(c, onLoggedOut) { confirmLogout = false } }) {
+        Title("Настройки")
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+            item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
+            item { Item("Каналы: скрыть, избранное, порядок") { open(Page.CHANNELS) } }
+            item {
+                Item("Размер шрифта", if (s.fontSize == FontSize.LARGE) "Крупный" else "Очень крупный") {
+                    scope.launch { c.settings.update { it.copy(fontSize = if (it.fontSize == FontSize.LARGE) FontSize.XLARGE else FontSize.LARGE) } }
+                }
             }
-        }
-        item {
-            Item("Качество видео", if (s.quality == Quality.AUTO) "Авто" else "Максимальное") {
-                scope.launch { c.settings.update { it.copy(quality = if (it.quality == Quality.AUTO) Quality.MAX else Quality.AUTO) } }
+            item {
+                Item("Качество видео", if (s.quality == Quality.AUTO) "Авто" else "Максимальное") {
+                    scope.launch { c.settings.update { it.copy(quality = if (it.quality == Quality.AUTO) Quality.MAX else Quality.AUTO) } }
+                }
             }
-        }
-        item {
-            Item("Запускать при включении приставки", if (s.autostart) "Да" else "Нет") {
-                val enable = !s.autostart
-                scope.launch { c.settings.update { it.copy(autostart = enable) } }
-                // Android 10+ needs "display over other apps" to start from boot.
-                if (enable && !AndroidSettings.canDrawOverlays(ctx)) {
-                    runCatching {
-                        ctx.startActivity(Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            item {
+                Item("Запускать при включении приставки", if (s.autostart) "Да" else "Нет") {
+                    val enable = !s.autostart
+                    scope.launch { c.settings.update { it.copy(autostart = enable) } }
+                    // Android 10+ needs "display over other apps" to start from boot.
+                    if (enable && !AndroidSettings.canDrawOverlays(ctx)) {
+                        runCatching {
+                            ctx.startActivity(Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
                     }
                 }
             }
+            item { Item("Диагностика") { open(Page.DIAGNOSTICS) } }
+            item { Item("Аккаунт", login) {} }
+            item { Item("Выйти из аккаунта") { confirmLogout = true } }
+            item { Item("Версия", BuildConfig.VERSION_NAME) {} }
         }
-        item { Item("Диагностика") { open(Page.DIAGNOSTICS) } }
-        item { Item("Аккаунт", login) {} }
-        item { Item("Выйти из аккаунта") { confirmLogout = true } }
-        item { Item("Версия", BuildConfig.VERSION_NAME) {} }
     }
-    if (confirmLogout) {
-        MessageDialog(
-            "Выйти из аккаунта?", "Потребуется снова ввести логин и пароль",
-            listOf("Отмена" to { confirmLogout = false }, "Выйти" to {
-                confirmLogout = false
-                scope.launch {
-                    c.player.stop()
-                    c.session.logout()
-                    onLoggedOut()
-                }
-            }),
-        )
-    }
+}
+
+@UnstableApi
+@Composable
+private fun LogoutDialog(c: AppContainer, onLoggedOut: () -> Unit, close: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    MessageDialog(
+        "Выйти из аккаунта?", "Потребуется снова ввести логин и пароль",
+        listOf("Отмена" to close, "Выйти" to {
+            close()
+            scope.launch {
+                c.player.stop()
+                c.session.logout()
+                onLoggedOut()
+            }
+        }),
+    )
 }
 
 @UnstableApi
@@ -181,9 +198,12 @@ private fun ChannelsPage(c: AppContainer) {
     val lists by c.channels.lists.collectAsState(null)
     val s by c.settings.settings.collectAsState(Settings())
     val order = remember { mutableStateListOf<Channel>() }
+    val listState = rememberLazyListState()
     var moving by remember { mutableStateOf<String?>(null) }
     var menuFor by remember { mutableStateOf<Channel?>(null) }
-    val firstFocus = remember { FocusRequester() }
+    // The row that gets focus back after a dialog closes or a move ends.
+    var anchor by remember { mutableStateOf<String?>(null) }
+    val anchorFocus = remember { FocusRequester() }
 
     LaunchedEffect(lists) {
         val l = lists ?: return@LaunchedEffect
@@ -192,63 +212,82 @@ private fun ChannelsPage(c: AppContainer) {
             order.addAll(l.manageable)
         }
     }
-    LaunchedEffect(order.isNotEmpty()) { if (order.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
+    LaunchedEffect(order.isNotEmpty(), menuFor) {
+        if (order.isNotEmpty() && menuFor == null) runCatching { anchorFocus.requestFocus() }
+    }
 
-    Title("Каналы")
-    Text(
-        if (moving != null) "Перемещение: ↑ ↓ — двигать, OK — готово" else "OK на канале — избранное, скрыть, переместить",
-        fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
-    )
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(bottom = 48.dp),
-        modifier = Modifier.onPreviewKeyEvent { ev ->
-            val code = moving ?: return@onPreviewKeyEvent false
-            if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent ev.key == Key.DirectionUp || ev.key == Key.DirectionDown
-            val i = order.indexOfFirst { it.code == code }
-            when (ev.key) {
-                Key.DirectionUp -> { if (i > 0) order.add(i - 1, order.removeAt(i)); true }
-                Key.DirectionDown -> { if (i in 0 until order.lastIndex) order.add(i + 1, order.removeAt(i)); true }
-                else -> false
-            }
-        },
-    ) {
-        itemsIndexed(order, key = { _, ch -> ch.code }) { i, ch ->
-            val hidden = ch.code in s.hidden
+    fun finishMove() {
+        val codes = order.map { it.code }
+        moving = null
+        scope.launch { c.settings.update { it.copy(order = codes) } }
+    }
+    BackHandler(enabled = moving != null) { finishMove() }
+    BackHandler(enabled = menuFor != null) { menuFor = null }
+
+    PageFrame(dialog = {
+        menuFor?.let { ch ->
             val fav = ch.code in s.favorites
-            val tags = listOfNotNull("★".takeIf { fav }, "скрыт".takeIf { hidden }, "↕".takeIf { moving == ch.code }).joinToString("  ")
-            Item(
-                "${ch.number}. ${ch.name}", tags,
-                modifier = if (i == 0) Modifier.focusRequester(firstFocus) else Modifier,
-            ) {
-                if (moving != null) {
-                    val codes = order.map { it.code }
-                    moving = null
-                    scope.launch { c.settings.update { it.copy(order = codes) } }
-                } else {
-                    menuFor = ch
+            val hidden = ch.code in s.hidden
+            MessageDialog(
+                ch.name, null,
+                listOf(
+                    (if (fav) "Убрать из избранного" else "★ В избранное") to {
+                        menuFor = null
+                        scope.launch { c.settings.update { if (fav) it.copy(favorites = it.favorites - ch.code) else it.copy(favorites = it.favorites + ch.code) } }
+                    },
+                    (if (hidden) "Показать" else "Скрыть") to {
+                        menuFor = null
+                        scope.launch { c.settings.update { if (hidden) it.copy(hidden = it.hidden - ch.code) else it.copy(hidden = it.hidden + ch.code) } }
+                    },
+                    "Переместить" to { menuFor = null; moving = ch.code },
+                    "Отмена" to { menuFor = null },
+                ),
+            )
+        }
+    }) {
+        Title("Каналы")
+        Text(
+            if (moving != null) "Перемещение: ↑ ↓ — двигать канал, OK или Назад — готово" else "OK на канале — избранное, скрыть, переместить",
+            fontSize = 18.sp, color = if (moving != null) Palette.Focus else Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
+        )
+        LazyColumn(
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 48.dp),
+            modifier = Modifier.onPreviewKeyEvent { ev ->
+                val code = moving ?: return@onPreviewKeyEvent false
+                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent ev.key == Key.DirectionUp || ev.key == Key.DirectionDown
+                val i = order.indexOfFirst { it.code == code }
+                val to = when (ev.key) {
+                    Key.DirectionUp -> i - 1
+                    Key.DirectionDown -> i + 1
+                    else -> return@onPreviewKeyEvent false
+                }
+                if (i >= 0 && to in order.indices) {
+                    order.add(to, order.removeAt(i))
+                    // Moving a row does not scroll by itself: keep it on screen.
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    if (visible.isNotEmpty() && (to <= visible.first().index || to >= visible.last().index)) {
+                        scope.launch { listState.animateScrollToItem((to - 3).coerceAtLeast(0)) }
+                    }
+                }
+                true
+            },
+        ) {
+            itemsIndexed(order, key = { _, ch -> ch.code }) { i, ch ->
+                val hidden = ch.code in s.hidden
+                val fav = ch.code in s.favorites
+                val tags = listOfNotNull("★".takeIf { fav }, "скрыт".takeIf { hidden }, "↕ двигается".takeIf { moving == ch.code }).joinToString("  ")
+                val isAnchor = ch.code == anchor || (anchor == null && i == 0)
+                Item(
+                    "${ch.number}. ${ch.name}", tags,
+                    modifier = if (isAnchor) Modifier.focusRequester(anchorFocus) else Modifier,
+                ) {
+                    anchor = ch.code
+                    if (moving != null) finishMove() else menuFor = ch
                 }
             }
         }
-    }
-    menuFor?.let { ch ->
-        val fav = ch.code in s.favorites
-        val hidden = ch.code in s.hidden
-        MessageDialog(
-            ch.name, null,
-            listOf(
-                (if (fav) "Убрать из избранного" else "★ В избранное") to {
-                    menuFor = null
-                    scope.launch { c.settings.update { if (fav) it.copy(favorites = it.favorites - ch.code) else it.copy(favorites = it.favorites + ch.code) } }
-                },
-                (if (hidden) "Показать" else "Скрыть") to {
-                    menuFor = null
-                    scope.launch { c.settings.update { if (hidden) it.copy(hidden = it.hidden - ch.code) else it.copy(hidden = it.hidden + ch.code) } }
-                },
-                "Переместить" to { menuFor = null; moving = ch.code },
-                "Отмена" to { menuFor = null },
-            ),
-        )
     }
 }
 
@@ -269,24 +308,26 @@ private fun DiagnosticsPage(c: AppContainer) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
-    Title("Диагностика")
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-        Text("Сеть: ${if (net) "есть" else "нет"}", fontSize = 18.sp, color = Palette.Text)
-        Text("Сессия: $sessionText", fontSize = 18.sp, color = Palette.Text)
-        Text("Плеер: ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 18.sp, color = Palette.Text)
-    }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-        items(events.withIndex().toList(), key = { it.index }) { (i, e) ->
-            Surface(
-                onClick = {},
-                modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
-                colors = FocusStyle.colors(),
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-            ) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(ZalaTime.relativeLabel(e.timeMs, now), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.width(150.dp))
-                    Text(e.text, fontSize = 15.sp, color = Palette.Text)
+    PageFrame {
+        Title("Диагностика")
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+            Text("Сеть: ${if (net) "есть" else "нет"}", fontSize = 18.sp, color = Palette.Text)
+            Text("Сессия: $sessionText", fontSize = 18.sp, color = Palette.Text)
+            Text("Плеер: ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 18.sp, color = Palette.Text)
+        }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+            items(events.withIndex().toList(), key = { it.index }) { (i, e) ->
+                Surface(
+                    onClick = {},
+                    modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
+                    colors = FocusStyle.colors(),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                ) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(ZalaTime.relativeLabel(e.timeMs, now), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.width(150.dp))
+                        Text(e.text, fontSize = 15.sp, color = Palette.Text)
+                    }
                 }
             }
         }

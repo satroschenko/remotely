@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -68,9 +70,18 @@ fun MessageDialog(title: String, message: String?, buttons: List<Pair<String, ()
         ) {
             Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text, textAlign = TextAlign.Center)
             if (message != null) Text(message, fontSize = 18.sp, color = Palette.TextDim, textAlign = TextAlign.Center)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                buttons.forEachIndexed { i, (label, action) ->
-                    BigButton(label, action, focusRequester = if (i == 0) first else null)
+            if (buttons.size <= 2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    buttons.forEachIndexed { i, (label, action) ->
+                        BigButton(label, action, focusRequester = if (i == 0) first else null)
+                    }
+                }
+            } else {
+                // More buttons do not fit in a row: stack them, one action per line.
+                Column(Modifier.width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    buttons.forEachIndexed { i, (label, action) ->
+                        BigButton(label, action, Modifier.fillMaxWidth(), focusRequester = if (i == 0) first else null)
+                    }
                 }
             }
         }

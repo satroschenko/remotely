@@ -84,10 +84,10 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                 val down = ev.type == KeyEventType.KeyDown
                 val up = ev.type == KeyEventType.KeyUp
                 val repeat = ev.nativeKeyEvent.repeatCount > 0
-                // Back is handled for every state here so the app never exits by accident.
+                // Back is handled for every state here: the app only exits through the "exit?" dialog.
                 if (ev.key == Key.Back) {
                     if (up) {
-                        if (blocking && ui.dialog == null) Unit else vm.onBack()
+                        if (blocking && ui.dialog == null) vm.askExit() else vm.onBack()
                     }
                     return@onPreviewKeyEvent true
                 }
@@ -99,7 +99,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         else -> false
                     }
                     Overlay.MENU -> when (ev.key) {
-                        Key.DirectionRight -> { if (down) vm.onBack(); true }
+                        Key.DirectionRight -> { if (down) vm.closeMenu(); true }
                         else -> false
                     }
                     Overlay.EPG -> when (ev.key) {
@@ -127,13 +127,13 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             enter = Motion.fromLeft, exit = Motion.toLeft,
         ) {
             Box(Modifier.fillMaxSize()) {
-                ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU)
+                ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU, dialogOpen = ui.dialog != null)
                 PreviewInfo(ui, vm)
             }
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
             Box(Modifier.fillMaxSize()) {
-                SideMenu(vm, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = { activity?.finish() })
+                SideMenu(vm, dialogOpen = ui.dialog != null, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = { activity?.finish() })
             }
         }
         AnimatedNullable(ui.epg.takeIf { ui.overlay == Overlay.EPG }, enter = Motion.fromRight, exit = Motion.toRight) { epg ->
@@ -163,6 +163,10 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                 "Вы смотрите запись", null,
                 listOf("Вернуться в прямой эфир" to vm::backToLive, "Продолжить запись" to vm::dismissDialog),
             )
+            Dialog.ExitApp -> DialogSpec(
+                "Выйти из приложения?", null,
+                listOf("Отмена" to vm::dismissDialog, "Выйти" to { activity?.finish() }),
+            )
             null -> when {
                 ui.channelsFailed -> DialogSpec("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))
                 ps.phase == Phase.NEEDS_USER_RETRY -> DialogSpec("Не удаётся подключиться к Zala", "Проверьте интернет и нажмите «Повторить»", listOf("Повторить" to vm::retryPlayer))
@@ -177,8 +181,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
 private data class DialogSpec(val title: String, val message: String?, val buttons: List<Pair<String, () -> Unit>>)
 
 private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean): Boolean = when (key) {
-    Key.DirectionUp, Key.ChannelUp -> { if (down && !repeat) vm.stepChannel(+1); true }
-    Key.DirectionDown, Key.ChannelDown -> { if (down && !repeat) vm.stepChannel(-1); true }
+    Key.DirectionUp, Key.ChannelUp -> { if (down) vm.stepChannel(+1, repeat); true }
+    Key.DirectionDown, Key.ChannelDown -> { if (down) vm.stepChannel(-1, repeat); true }
     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (up) vm.openList(); true }
     Key.DirectionLeft -> { if (down && !repeat) vm.openList(); true }
     Key.DirectionRight -> { if (down && !repeat) ui.current?.let(vm::openEpg); true }
