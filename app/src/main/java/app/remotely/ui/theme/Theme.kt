@@ -37,8 +37,14 @@ private val colors = darkColorScheme(
     onSurfaceVariant = Palette.TextDim,
 )
 
-/** Scale applied on top of system font scale; LARGE is the default for parents. */
-enum class FontSize(val scale: Float) { LARGE(1.0f), XLARGE(1.25f) }
+/** Scale applied on top of system font scale; LARGE is the default for parents. Settings cycle through them in this order. */
+enum class FontSize(val scale: Float, val label: String) {
+    MEDIUM(0.85f, "Средний"),
+    LARGE(1.0f, "Крупный"),
+    XLARGE(1.25f, "Очень крупный");
+
+    fun next(): FontSize = entries[(ordinal + 1) % entries.size]
+}
 
 /** The layout is drawn for a 960x540 dp screen. */
 private const val CANVAS_WIDTH_DP = 960f

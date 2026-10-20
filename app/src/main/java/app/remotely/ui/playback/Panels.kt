@@ -75,6 +75,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -120,7 +121,38 @@ private suspend fun LazyListState.reveal(index: Int) {
         else -> visible.first { it.index == index }.offset
     }
     val delta = edgeDelta((offset - info.viewportStartOffset).toFloat(), first.size.toFloat(), (info.viewportEndOffset - info.viewportStartOffset).toFloat())
-    if (delta != 0f) scrollBy(delta)
+    if (delta == 0f) return
+    scrollBy(delta)
+    // The scroll lays the list out at once; rows can differ in height, so correct the estimate with the real row.
+    val now = layoutInfo
+    val row = now.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val fix = edgeDelta((row.offset - now.viewportStartOffset).toFloat(), row.size.toFloat(), (now.viewportEndOffset - now.viewportStartOffset).toFloat())
+    if (fix != 0f) scrollBy(fix)
+}
+
+/**
+ * Up/Down in a list of rows. A row fully on screen gets the normal focus move; one cut by the edge or off screen
+ * is handled by [jumpTo] (scroll and focus in one frame), so the focus stays pinned to the edge and never runs
+ * ahead of the scroll. Held keys are throttled to a pace the list can follow.
+ */
+private fun listKey(
+    ev: KeyEvent, state: LazyListState, focusIndex: Int, lastIndex: Int, lastMove: LongArray, wrap: Boolean, jumpTo: (Int) -> Unit,
+): Boolean {
+    val up = ev.key == Key.DirectionUp || ev.key == Key.ChannelUp
+    val down = ev.key == Key.DirectionDown || ev.key == Key.ChannelDown
+    if ((!up && !down) || ev.type != KeyEventType.KeyDown || lastIndex < 0) return false
+    val repeat = ev.nativeKeyEvent.repeatCount > 0
+    val t = SystemClock.uptimeMillis()
+    if (repeat && t - lastMove[0] < LIST_REPEAT_MS) return true
+    lastMove[0] = t
+    val target = if (up) focusIndex - 1 else focusIndex + 1
+    return when {
+        // Past either end: wrap around (on a fresh press only, holding stops at the end).
+        target > lastIndex -> { if (wrap && !repeat) jumpTo(0); true }
+        target < 0 -> { if (wrap && !repeat) jumpTo(lastIndex); true }
+        ev.key == Key.ChannelUp || ev.key == Key.ChannelDown || state.needsScroll(target) -> { jumpTo(target); true }
+        else -> false
+    }
 }
 
 
@@ -146,13 +178,11 @@ private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
 
 // TV canvas is 960x540 dp. Panels take the left side, the preview sits top-right.
 const val CHANNEL_PANEL_FRACTION = 0.45f
-/** The programme panel needs room for the day tabs. */
-const val EPG_PANEL_FRACTION = 0.52f
 val PreviewWidth = 416.dp
 val PreviewHeight = 234.dp
 val PreviewTop = 24.dp
-// Keeps clear of the programme panel (960 * 0.52 = 499 < 960 - 40 - 416 = 504), close to centred right of the channel list.
-val PreviewEnd = 40.dp
+// Centred in the free area right of the channel and programme panels: (960 * (1 - 0.45) - 416) / 2 = 56.
+val PreviewEnd = 56.dp
 private val InfoSide = 24.dp
 private val ChannelRowHeight = 72.dp
 private val InfoTop = PreviewTop + PreviewHeight + 12.dp
@@ -216,27 +246,7 @@ fun BoxScope.ChannelPanel(
         }
         SmoothList(
             state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp,
-            Modifier.onPreviewKeyEvent { ev ->
-                val up = ev.key == Key.DirectionUp || ev.key == Key.ChannelUp
-                val down = ev.key == Key.DirectionDown || ev.key == Key.ChannelDown
-                if ((!up && !down) || ev.type != KeyEventType.KeyDown || list.isEmpty()) return@onPreviewKeyEvent false
-                val repeat = ev.nativeKeyEvent.repeatCount > 0
-                val t = SystemClock.uptimeMillis()
-                // Holding the key: move at a pace the list can scroll to, instead of queueing up and freezing.
-                if (repeat && t - lastMove[0] < LIST_REPEAT_MS) return@onPreviewKeyEvent true
-                lastMove[0] = t
-                when {
-                    // Past either end: wrap around (on a fresh press only, holding stops at the end).
-                    down && focusIndex == list.lastIndex -> { if (!repeat) jumpTo(0); true }
-                    up && focusIndex == 0 -> { if (!repeat) jumpTo(list.lastIndex); true }
-                    ev.key == Key.ChannelUp -> { jumpTo(focusIndex - 1); true }
-                    ev.key == Key.ChannelDown -> { jumpTo(focusIndex + 1); true }
-                    // Next row cut by the edge or off screen: scroll and move the focus together, so the focus stays
-                    // at the edge and the list moves under it. Rows fully on screen are left to the normal focus move.
-                    state.needsScroll(if (up) focusIndex - 1 else focusIndex + 1) -> { jumpTo(if (up) focusIndex - 1 else focusIndex + 1); true }
-                    else -> false
-                }
-            },
+            Modifier.onPreviewKeyEvent { ev -> listKey(ev, state, focusIndex, list.lastIndex, lastMove, wrap = true, ::jumpTo) },
         ) {
             itemsIndexed(list, key = { _, ch -> ch.code }) { i, ch ->
                 ChannelRow(
@@ -423,16 +433,35 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     val now = vm.nowMs()
     val startIndex = e.items.indexOfFirst { now >= it.startMs && now < it.endMs }.let { if (it < 0) 0 else it }
     val state = rememberLazyListState()
-    val focus = remember { FocusRequester() }
+    // Same scrolling as the channel list: per-row requesters, focus pinned to the edge.
+    var focusIndex by remember(e.items) { mutableIntStateOf(startIndex) }
+    val requesters = remember(e.items) { HashMap<Int, FocusRequester>() }
+    fun requester(index: Int) = requesters.getOrPut(index) { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val lastMove = remember { longArrayOf(0L) }
+
+    fun jumpTo(index: Int) {
+        focusIndex = index
+        scope.launch {
+            state.reveal(index)
+            if (runCatching { requester(index).requestFocus() }.isFailure) {
+                withFrameNanos { }
+                runCatching { requester(index).requestFocus() }
+            }
+        }
+    }
 
     Column(
-        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(EPG_PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(CHANNEL_PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
     ) {
         Text("${vm.lists.value.numberOf(e.channel)}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
+            // The panel fits three day tabs: the selected day and its neighbours.
+            val from = (e.dayIndex - 1).coerceAtMost(e.days.size - 3).coerceAtLeast(0)
             e.days.forEachIndexed { i, d ->
+                if (i !in from until from + 3) return@forEachIndexed
                 val sel = i == e.dayIndex
                 val bg by animateColorAsState(if (sel) Palette.Focus else Color.Transparent, tween(200), label = "tab")
                 val fg by animateColorAsState(if (sel) Color.Black else Palette.TextDim, tween(200), label = "tabText")
@@ -452,12 +481,15 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
             e.items.isEmpty() -> Text("Нет программы на этот день", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
         }
         val listAlpha by animateFloatAsState(if (e.loading) 0f else 1f, tween(if (e.loading) 90 else 220), label = "epgList")
-        SmoothList(state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp, Modifier.alpha(listAlpha)) {
+        SmoothList(
+            state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp,
+            Modifier.alpha(listAlpha).onPreviewKeyEvent { ev -> listKey(ev, state, focusIndex, e.items.lastIndex, lastMove, wrap = false, ::jumpTo) },
+        ) {
             itemsIndexed(e.items, key = { _, p -> p.code + p.startMs }) { i, p ->
                 ProgrammeRow(
                     p, now, vm.canRecord(e.channel, p),
-                    if (i == startIndex) Modifier.focusRequester(focus) else Modifier,
-                    onFocus = { vm.onEpgFocus(p) },
+                    Modifier.focusRequester(requester(i)),
+                    onFocus = { focusIndex = i; vm.onEpgFocus(p) },
                     onClick = { vm.onEpgSelect(p) },
                 )
             }
@@ -475,7 +507,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     LaunchedEffect(e.items) {
         if (e.items.isNotEmpty()) {
             state.scrollToItem((startIndex - 2).coerceAtLeast(0))
-            runCatching { focus.requestFocus() }
+            runCatching { requester(startIndex).requestFocus() }
         }
     }
 }

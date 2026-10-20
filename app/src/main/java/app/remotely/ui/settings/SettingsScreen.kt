@@ -63,7 +63,6 @@ import app.remotely.data.store.Quality
 import app.remotely.data.store.Settings
 import app.remotely.ui.common.MessageDialog
 import app.remotely.ui.theme.FocusStyle
-import app.remotely.ui.theme.FontSize
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
 
@@ -145,8 +144,8 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
             item { Item("Каналы: скрыть, избранное, порядок") { open(Page.CHANNELS) } }
             item {
-                Item("Размер шрифта", if (s.fontSize == FontSize.LARGE) "Крупный" else "Очень крупный") {
-                    scope.launch { c.settings.update { it.copy(fontSize = if (it.fontSize == FontSize.LARGE) FontSize.XLARGE else FontSize.LARGE) } }
+                Item("Размер шрифта", s.fontSize.label) {
+                    scope.launch { c.settings.update { it.copy(fontSize = it.fontSize.next()) } }
                 }
             }
             item {

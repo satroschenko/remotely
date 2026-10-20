@@ -29,4 +29,9 @@ class SettingsStoreTest {
         assertEquals("a", s.lastChannel)
         scope.cancel()
     }
+
+    @Test fun fontSizeDefaultAndCycle() {
+        assertEquals(FontSize.LARGE, Settings().fontSize)
+        assertEquals(listOf(FontSize.XLARGE, FontSize.MEDIUM, FontSize.LARGE), listOf(FontSize.LARGE.next(), FontSize.XLARGE.next(), FontSize.MEDIUM.next()))
+    }
 }
