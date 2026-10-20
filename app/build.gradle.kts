@@ -13,10 +13,11 @@ android {
 
     defaultConfig {
         applicationId = "app.remotely"
-        minSdk = 28
+        // Android 7: older TVs (e.g. Витязь 24LH1103) where the official app is too heavy.
+        minSdk = 24
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.11"
+        versionCode = 13
+        versionName = "1.12"
     }
 
     // Release signing comes from keystore.properties (git-ignored, created by tools/make-keystore.sh).
@@ -46,6 +47,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time (ZalaTime) needs API 26; desugaring brings it to Android 7.
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -59,6 +62,7 @@ kotlin {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

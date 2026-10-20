@@ -47,7 +47,7 @@
 
 | | |
 |---|---|
-| 📺 **Телевизор или приставка с Android TV / Google TV** | Android 9 или новее |
+| 📺 **Телевизор или приставка с Android TV / Google TV** | Android 7 или новее |
 | 💳 **Оплаченная услуга SMART ZALA** | Тарифы «Канапа ТВ», «ЯСНА … SMART», «Семейный» и др. Подробнее — на [beltelecom.by](https://beltelecom.by/private/tv/smart) |
 | 🔑 **Логин и пароль SMART ZALA** | Выдают в офисе Белтелекома или в личном кабинете. Это те же логин и пароль, с которыми вы входите в официальное приложение «ZALA yasna» |
 | 🌐 **Интернет** | Любой, от 1 Мбит/с |
@@ -269,7 +269,7 @@ Android по умолчанию не даёт ставить приложени�
 
 <br>
 
-Kotlin 2.3, Compose for TV, Media3 ExoPlayer (DASH), OkHttp, DataStore. Android 9+ (minSdk 28).
+Kotlin 2.3, Compose for TV, Media3 ExoPlayer (DASH), OkHttp, DataStore. Android 7+ (minSdk 24, core library desugaring for java.time).
 
 Официальное приложение — WebView-обёртка ZTE над порталом `tv.zala.by`. Remotely обращается к тому же
 порталу напрямую: вход в 4 шага, JSON-эндпоинты каналов и программы, DASH-потоки без DRM (эфир и записи).
