@@ -48,11 +48,13 @@ class FakeStreams : StreamSource {
     var failures = 0
     var error: () -> Exception = { IOException("net") }
     var n = 0
+    var delayMs = 0L
     override suspend fun liveUrl(ch: Channel): String {
         if (failures > 0) { failures--; throw error() }
         return "live-${ch.code}-${++n}"
     }
     override suspend fun archiveUrl(ch: Channel, p: Programme): String {
+        kotlinx.coroutines.delay(delayMs)
         if (failures > 0) { failures--; throw error() }
         return "rec-${p.code}-${++n}"
     }
@@ -80,13 +82,16 @@ class PlayerControllerTest {
         assertEquals(Phase.PLAYING, c.state.value.phase)
     }
 
-    @Test fun fiveRetriesThenUserRetryThenSucceeds() = runTest {
+    @Test fun sixRetriesThenUserRetryThenSucceeds() = runTest {
         val (c, e, s) = setup()
         s.failures = 100
         c.play(PlaybackTarget.Live(ch))
         runCurrent()
         assertEquals(Phase.RECONNECTING, c.state.value.phase)
-        advanceTimeBy(2_000 + 4_000 + 8_000 + 16_000 + 30_000 + 10)
+        advanceTimeBy(59_000)
+        runCurrent()
+        assertEquals(Phase.RECONNECTING, c.state.value.phase)
+        advanceTimeBy(1_000 + 10)
         runCurrent()
         assertEquals(Phase.NEEDS_USER_RETRY, c.state.value.phase)
         advanceTimeBy(600_000) // no hammering while dialog is shown
@@ -131,7 +136,7 @@ class PlayerControllerTest {
         advanceTimeBy(14_000) // marker never moves
         runCurrent()
         assertEquals(Phase.RECONNECTING, c.state.value.phase)
-        advanceTimeBy(2_100)
+        advanceTimeBy(1_100)
         runCurrent()
         assertEquals(2, e.opened.size)
         assertTrue(e.opened[1].first.endsWith("-2"))
@@ -214,13 +219,82 @@ class PlayerControllerTest {
         e.positionMs = 700_000
         e.progressMarker = 1
         advanceTimeBy(1_100)
-        e.l!!.onError(false, "http 404")
-        advanceTimeBy(2_100)
+        e.l!!.onError(false, "http 500")
+        advanceTimeBy(1_100)
         runCurrent()
         assertEquals(700_000L, e.opened[1].second)
     }
 
-    @Test fun archiveUnavailableEmitsEvent() = runTest {
+    private fun TestScope.events(c: PlayerController): MutableList<PlayerEvent> {
+        val events = mutableListOf<PlayerEvent>()
+        backgroundScope.launch { c.events.toList(events) }
+        runCurrent()
+        return events
+    }
+
+    @Test fun missingRecordingAsksOtherServersThenGivesUp() = runTest {
+        val (c, e, _) = setup()
+        val events = events(c)
+        c.play(PlaybackTarget.Archive(ch, prog, 0))
+        runCurrent()
+        e.l!!.onError(false, "404", NotFound.MANIFEST)
+        assertEquals(Phase.CONNECTING, c.state.value.phase) // no "Восстанавливаем" for this
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(2, e.opened.size)
+        e.ready() // another server has it
+        assertTrue(events.isEmpty())
+
+        c.play(PlaybackTarget.Archive(ch, prog, 0))
+        runCurrent()
+        repeat(4) {
+            e.l!!.onError(false, "404", NotFound.MANIFEST)
+            advanceTimeBy(5_000)
+            runCurrent()
+        }
+        assertTrue(events.single() is PlayerEvent.RecordingUnavailable)
+        assertEquals(2 + 1 + 3, e.opened.size)
+    }
+
+    @Test fun holeInRecordingIsSkipped() = runTest {
+        val (c, e, _) = setup()
+        val events = events(c)
+        c.play(PlaybackTarget.Archive(ch, prog, 0))
+        runCurrent()
+        e.ready()
+        e.positionMs = 600_000
+        repeat(4) { // the piece at 10:00 is missing on every server
+            e.l!!.onError(false, "404", NotFound.SEGMENT)
+            advanceTimeBy(5_000)
+            runCurrent()
+        }
+        assertEquals(620_000L, e.opened.last().second)
+        e.l!!.onError(false, "404", NotFound.SEGMENT) // hole goes on: skip again at once
+        runCurrent()
+        assertEquals(640_000L, e.opened.last().second)
+        assertTrue(events.isEmpty())
+        e.positionMs = 3_590_000 // a hole at the very end ends the recording
+        e.l!!.onError(false, "404", NotFound.SEGMENT)
+        runCurrent()
+        assertTrue(events.single() is PlayerEvent.RecordingEnded)
+    }
+
+    @Test fun recordingStartsWhereAskedNotWhereLiveWas() = runTest {
+        val (c, e, s) = setup()
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        e.ready()
+        e.positionMs = 66_000 // live window position
+        s.delayMs = 3_000 // portal is slow to give the recording link
+        c.play(PlaybackTarget.Archive(ch, prog, 0))
+        advanceTimeBy(1_000)
+        assertEquals(0L, c.positionMs) // header shows the recording time, not the old live position
+        advanceTimeBy(2_500)
+        runCurrent()
+        assertEquals(0L, e.opened.last().second)
+    }
+
+        @Test fun archiveUnavailableEmitsEvent() = runTest {
         val (c, _, s) = setup()
         s.failures = 1
         s.error = { ArchiveUnavailableException("98") }

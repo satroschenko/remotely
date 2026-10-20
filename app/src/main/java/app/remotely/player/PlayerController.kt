@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 interface MediaEngine {
     interface Listener {
         fun onStateChanged(state: EngineState)
-        fun onError(behindLiveWindow: Boolean, message: String)
+        fun onError(behindLiveWindow: Boolean, message: String, notFound: NotFound? = null)
     }
 
     fun setListener(listener: Listener?)
@@ -55,6 +55,9 @@ sealed interface PlaybackTarget {
     data class Archive(override val channel: Channel, val programme: Programme, val startOffsetMs: Long) : PlaybackTarget
 }
 
+/** What the server answered 404 for: the whole recording (manifest) or one piece of it. */
+enum class NotFound { MANIFEST, SEGMENT }
+
 enum class Phase { IDLE, CONNECTING, PLAYING, RECONNECTING, NO_NETWORK, NEEDS_USER_RETRY, BAD_CREDENTIALS, NOT_LOGGED_IN }
 
 data class PlayerState(
@@ -75,7 +78,7 @@ class PlayerController(
     private val clock: Clock,
     private val scope: CoroutineScope,
     private val log: EventLog,
-    private val policy: RetryPolicy = RetryPolicy(),
+    private val policy: RetryPolicy = RetryPolicy(listOf(1_000, 2_000, 4_000, 8_000, 15_000, 30_000)),
     private val watchdog: Watchdog = Watchdog(),
     private val freeze: VideoFreezeDetector = VideoFreezeDetector(),
 ) : MediaEngine.Listener {
@@ -89,6 +92,13 @@ class PlayerController(
     private var networkUp = true
     /** Last known archive position, used to resume after reconnects. */
     private var archivePositionMs = 0L
+    /** The engine already plays the current target (not the previous one while a new link is fetched). */
+    private var engineOnTarget = false
+    /** 404s in a row for the current recording, and where it happened. */
+    private var notFoundTries = 0
+    private var notFoundAtMs = 0L
+    /** Skipping a hole in the recording: next 404 skips again without asking twice. */
+    private var skippingHole = false
     /** When the video decoder was last restarted because of a frozen picture. */
     private var freezeFixAt: Long? = null
 
@@ -96,18 +106,21 @@ class PlayerController(
         engine.setListener(this)
     }
 
-    val positionMs: Long get() = engine.positionMs
+    /** Position in the recording; while a new link is fetched, where it is going to start. */
+    val positionMs: Long get() = if (engineOnTarget) engine.positionMs else archivePositionMs
     val durationMs: Long get() = engine.durationMs
 
     fun play(target: PlaybackTarget) {
         policy.onSuccess()
         archivePositionMs = (target as? PlaybackTarget.Archive)?.startOffsetMs ?: 0
+        resetNotFound()
         _state.value = PlayerState(target = target, phase = Phase.CONNECTING)
         open(target, Phase.CONNECTING)
     }
 
     private fun open(target: PlaybackTarget, phase: Phase) {
         openJob?.cancel()
+        engineOnTarget = false
         _state.update { it.copy(phase = phase, paused = false) }
         openJob = scope.launch {
             try {
@@ -115,9 +128,11 @@ class PlayerController(
                     is PlaybackTarget.Live -> streams.liveUrl(target.channel)
                     is PlaybackTarget.Archive -> streams.archiveUrl(target.channel, target.programme)
                 }
+                if (target is PlaybackTarget.Archive) log.add("Открываю запись «${target.programme.title}» с ${mmss(archivePositionMs)}")
                 watchdog.reset(clock.nowMs())
                 freeze.reset(clock.nowMs())
                 engine.open(url, target is PlaybackTarget.Live, if (target is PlaybackTarget.Archive) archivePositionMs else 0)
+                engineOnTarget = true
                 ensureTicking()
             } catch (e: CancellationException) {
                 throw e
@@ -139,7 +154,10 @@ class PlayerController(
 
     private fun tick() {
         val s = _state.value
-        if (s.target is PlaybackTarget.Archive && engine.state == EngineState.READY) archivePositionMs = engine.positionMs
+        if (s.target is PlaybackTarget.Archive && engineOnTarget && engine.state == EngineState.READY) {
+            archivePositionMs = engine.positionMs
+            if (archivePositionMs > notFoundAtMs + NOT_FOUND_CLEAR_MS) resetNotFound()
+        }
         if (s.phase != Phase.PLAYING && s.phase != Phase.CONNECTING) return
         if (s.paused) return
         if (watchdog.tick(clock.nowMs(), engine.state, engine.playWhenReady, engine.progressMarker)) {
@@ -201,9 +219,57 @@ class PlayerController(
         }
     }
 
+    private fun resetNotFound() {
+        notFoundTries = 0
+        notFoundAtMs = 0
+        skippingHole = false
+    }
+
+    /**
+     * Zala keeps a recording on several servers and some of them miss it or a piece of it:
+     * ask again a few times (another server answers), then skip what no server has.
+     */
+    private fun recordingNotFound(target: PlaybackTarget.Archive, what: NotFound) {
+        if (engineOnTarget) archivePositionMs = maxOf(archivePositionMs, engine.positionMs)
+        notFoundAtMs = archivePositionMs
+        engine.stop()
+        openJob?.cancel()
+        if ((what == NotFound.MANIFEST || !skippingHole) && ++notFoundTries <= NOT_FOUND_RETRIES) {
+            log.add("Сервер не нашёл запись — спрашиваю ещё раз ($notFoundTries)")
+            if (_state.value.phase != Phase.CONNECTING) setPhase(Phase.RECONNECTING)
+            openJob = scope.launch {
+                delay(NOT_FOUND_DELAY_MS * notFoundTries)
+                open(target, _state.value.phase)
+            }
+            return
+        }
+        notFoundTries = 0
+        if (what == NotFound.MANIFEST) {
+            log.add("Записи нет ни на одном сервере")
+            _events.tryEmit(PlayerEvent.RecordingUnavailable(target))
+            return
+        }
+        skippingHole = true
+        archivePositionMs += HOLE_SKIP_MS
+        log.add("Дыра в записи — пропускаю до ${mmss(archivePositionMs)}")
+        if (archivePositionMs >= target.programme.endMs - target.programme.startMs) {
+            _events.tryEmit(PlayerEvent.RecordingEnded(target, archivePositionMs))
+        } else {
+            open(target, Phase.RECONNECTING)
+        }
+    }
+
     private companion object {
         /** A second freeze this soon after a decoder restart means the restart did not help. */
         const val FREEZE_REPEAT_MS = 60_000L
+        const val NOT_FOUND_RETRIES = 3
+        const val NOT_FOUND_DELAY_MS = 300L
+        /** Step over a hole in a recording; segments are 6-10 s long. */
+        const val HOLE_SKIP_MS = 20_000L
+        /** Played this far past the last 404: the trouble is over. */
+        const val NOT_FOUND_CLEAR_MS = 5_000L
+
+        fun mmss(ms: Long): String = "%d:%02d".format(ms / 60_000, ms / 1000 % 60)
     }
 
     private fun setPhase(p: Phase) = _state.update { it.copy(phase = p) }
@@ -229,7 +295,7 @@ class PlayerController(
 
     /** Activity stopped: release decoder, remember where we were. */
     fun stop() {
-        if (_state.value.target is PlaybackTarget.Archive && engine.state == EngineState.READY) archivePositionMs = engine.positionMs
+        if (_state.value.target is PlaybackTarget.Archive && engineOnTarget && engine.state == EngineState.READY) archivePositionMs = engine.positionMs
         openJob?.cancel()
         tickJob?.cancel()
         engine.stop()
@@ -266,18 +332,24 @@ class PlayerController(
             }
             EngineState.ENDED -> {
                 val t = _state.value.target
-                if (t is PlaybackTarget.Archive) _events.tryEmit(PlayerEvent.RecordingEnded(t, engine.positionMs))
-                else fail(IllegalStateException("live ended"))
+                if (t is PlaybackTarget.Archive) {
+                    log.add("Запись кончилась на ${mmss(engine.positionMs)}")
+                    _events.tryEmit(PlayerEvent.RecordingEnded(t, engine.positionMs))
+                } else {
+                    fail(IllegalStateException("live ended"))
+                }
             }
             else -> Unit
         }
     }
 
-    override fun onError(behindLiveWindow: Boolean, message: String) {
+    override fun onError(behindLiveWindow: Boolean, message: String, notFound: NotFound?) {
         if (behindLiveWindow) {
             engine.seekToLive()
             return
         }
+        val t = _state.value.target
+        if (notFound != null && t is PlaybackTarget.Archive) return recordingNotFound(t, notFound)
         fail(RuntimeException(message))
     }
 }

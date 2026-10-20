@@ -363,7 +363,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     // ---- archive ----
 
-    fun playArchive(ch: Channel, p: Programme, offsetMs: Long) {
+    /** The recording on screen was reached by playing or seeking on, not picked in the programme list. */
+    private var continuedRecording = false
+
+    fun playArchive(ch: Channel, p: Programme, offsetMs: Long, continued: Boolean = false) {
+        continuedRecording = continued
         dismissDialog()
         previewJob?.cancel()
         seek.cancel()
@@ -423,7 +427,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                     player.seekTo(r.offsetMs)
                     _ui.update { it.copy(archive = a.copy(seekTargetMs = null, seekDeltaMs = 0, positionMs = r.offsetMs)) }
                 } else {
-                    playArchive(ch, r.programme, r.offsetMs)
+                    playArchive(ch, r.programme, r.offsetMs, continued = true)
                 }
             TimelinePoint.Live -> {
                 toast("Прямой эфир")
@@ -446,15 +450,32 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private fun onPlayerEvent(e: PlayerEvent) {
         when (e) {
             is PlayerEvent.RecordingEnded -> {
-                val tl = ArchiveTimeline(timeline.ifEmpty { listOf(e.target.programme) }, c.clock.nowMs(), c.epg.depthMs)
-                when (val r = tl.onEnded(e.target.programme, e.positionMs)) {
-                    is TimelinePoint.InProgramme -> playArchive(e.target.channel, r.programme, r.offsetMs)
-                    TimelinePoint.Live -> switchTo(e.target.channel)
+                val p = e.target.programme
+                val now = c.clock.nowMs()
+                val tl = ArchiveTimeline(timeline.ifEmpty { listOf(p) }, now, c.epg.depthMs)
+                // Zala's recording broke off before the programme did.
+                val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS
+                when (val r = tl.onEnded(p, e.positionMs, e.target.startOffsetMs)) {
+                    is TimelinePoint.InProgramme -> {
+                        if (cut) toast("Запись прервалась — следующая передача")
+                        playArchive(e.target.channel, r.programme, r.offsetMs, continued = true)
+                    }
+                    TimelinePoint.Live -> {
+                        if (now - (p.startMs + e.positionMs) > CUT_MARGIN_MS) toast("Дальше записи нет — прямой эфир")
+                        switchTo(e.target.channel)
+                    }
                 }
             }
             is PlayerEvent.RecordingUnavailable -> {
-                toast("Запись недоступна")
-                switchTo(e.target.channel)
+                val p = e.target.programme
+                val next = if (continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthMs).next(p) else null
+                if (next != null) {
+                    toast("Нет записи «${p.title}» — следующая передача")
+                    playArchive(e.target.channel, next, 0, continued = true)
+                } else {
+                    toast("Запись недоступна")
+                    switchTo(e.target.channel)
+                }
             }
         }
     }
@@ -492,5 +513,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private companion object {
         const val ZAP_SETTLE_MS = 300L
         const val ZAP_REPEAT_MS = 250L
+        /** A recording this much shorter than its programme was cut by the server. */
+        const val CUT_MARGIN_MS = 60_000L
     }
 }

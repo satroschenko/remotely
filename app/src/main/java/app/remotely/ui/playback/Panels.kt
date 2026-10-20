@@ -572,16 +572,16 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
 fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel) {
     val p = a.programme
     val now = vm.nowMs()
-    // Always-visible mark so recordings are never confused with live TV.
+    val duration = (p.endMs - p.startMs).coerceAtLeast(1)
+    val shownWall = a.seekTargetMs ?: (p.startMs + a.positionMs)
+    // Always-visible mark so recordings are never confused with live TV; shows the moment being watched.
     Row(
         Modifier.align(Alignment.TopStart).padding(20.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("● ЗАПИСЬ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
-        Text("  ·  ${ZalaTime.relativeLabel(p.startMs, now)}", fontSize = 18.sp, color = Palette.Text)
+        Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 18.sp, color = Palette.Text)
     }
-    val duration = (p.endMs - p.startMs).coerceAtLeast(1)
-    val shownWall = a.seekTargetMs ?: (p.startMs + a.positionMs)
     AnimatedVisibility(
         visible = a.controlsVisible || paused,
         modifier = Modifier.align(Alignment.BottomCenter),

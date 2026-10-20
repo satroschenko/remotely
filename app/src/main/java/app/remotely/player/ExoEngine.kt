@@ -10,19 +10,38 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import okhttp3.OkHttpClient
 
 /** Media3 ExoPlayer behind [MediaEngine]. Must be used on the main thread. */
 @UnstableApi
 class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
     private val trackSelector = DefaultTrackSelector(context)
+    private var isLive = true
+
+    /**
+     * A recording the server answered 4xx for will not appear if the same server is asked again:
+     * report it at once, the controller takes a new link (another server) or skips the hole.
+     */
+    private val loadErrors = object : DefaultLoadErrorHandlingPolicy() {
+        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+            val e = info.exception
+            if (!isLive && e is HttpDataSource.InvalidResponseCodeException && e.responseCode in 400..499) return C.TIME_UNSET
+            return super.getRetryDelayMsFor(info)
+        }
+    }
+
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setTrackSelector(trackSelector)
-        .setMediaSourceFactory(DashMediaSource.Factory(OkHttpDataSource.Factory(httpClient)))
+        .setMediaSourceFactory(
+            DashMediaSource.Factory(OkHttpDataSource.Factory(httpClient)).setLoadErrorHandlingPolicy(loadErrors),
+        )
         .build()
     private var listener: MediaEngine.Listener? = null
     private val window = Timeline.Window()
@@ -37,9 +56,17 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
                 listener?.onError(
                     behindLiveWindow = error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW,
                     message = "${error.errorCodeName}: ${error.message}",
+                    notFound = notFound(error),
                 )
             }
         })
+    }
+
+    private fun notFound(error: PlaybackException): NotFound? {
+        val http = generateSequence<Throwable>(error) { it.cause }
+            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull() ?: return null
+        if (http.responseCode != 404 && http.responseCode != 410) return null
+        return if (http.dataSpec.uri.path.orEmpty().endsWith(".mpd")) NotFound.MANIFEST else NotFound.SEGMENT
     }
 
     override fun setListener(listener: MediaEngine.Listener?) {
@@ -47,6 +74,7 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
     }
 
     override fun open(url: String, isLive: Boolean, startPositionMs: Long) {
+        this.isLive = isLive
         val item = MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_MPD).build()
         if (isLive) player.setMediaItem(item) else player.setMediaItem(item, startPositionMs)
         player.prepare()

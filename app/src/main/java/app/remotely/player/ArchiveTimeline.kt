@@ -34,12 +34,14 @@ class ArchiveTimeline(
 
     fun next(p: Programme): Programme? = list.firstOrNull { it.startMs >= p.endMs && it.startMs < nowMs }
 
-    /** What to do when a recording's manifest ended. */
-    fun onEnded(p: Programme, positionMs: Long): TimelinePoint {
+    /** What to do when a recording opened at [startOffsetMs] ended at [positionMs]. */
+    fun onEnded(p: Programme, positionMs: Long, startOffsetMs: Long = 0): TimelinePoint {
         val reached = p.startMs + positionMs
         if (p.endMs > nowMs) {
-            // Start-over of the programme on air: manifest was cut at request time.
-            return if (nowMs - reached < liveMarginMs) TimelinePoint.Live else TimelinePoint.InProgramme(p, positionMs)
+            // Start-over of the programme on air: manifest was cut at request time, so reload it.
+            // A reload that brought nothing new means the recording broke off: go live, don't loop.
+            val stuck = positionMs - startOffsetMs < liveMarginMs
+            return if (stuck || nowMs - reached < liveMarginMs) TimelinePoint.Live else TimelinePoint.InProgramme(p, positionMs)
         }
         return next(p)?.let { TimelinePoint.InProgramme(it, 0) } ?: TimelinePoint.Live
     }

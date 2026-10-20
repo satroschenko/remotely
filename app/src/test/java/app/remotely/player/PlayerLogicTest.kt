@@ -93,4 +93,11 @@ class ArchiveTimelineTest {
         // Caught up with now → live.
         assertEquals(TimelinePoint.Live, tl.onEnded(d, 59 * 60_000L + 50_000))
     }
+
+    @Test fun startOverThatBrokeOffGoesLiveInsteadOfLooping() {
+        // Recording of D stops at 21:09:40 on the server: the reload from there ends right away.
+        val cut = 9 * 60_000L + 40_000
+        assertEquals(TimelinePoint.InProgramme(d, cut), tl.onEnded(d, cut, 0))
+        assertEquals(TimelinePoint.Live, tl.onEnded(d, cut, cut))
+    }
 }
