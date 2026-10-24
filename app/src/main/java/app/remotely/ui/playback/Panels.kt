@@ -496,7 +496,8 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
                     fontSize = 18.sp,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
                     color = fg,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.pointerClick { vm.epgDay(i - e.dayIndex) }
+                        .clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
             Text("▶", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim,
