@@ -27,11 +27,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -158,13 +160,26 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     ) {
         VideoSurface(c.engine.player, preview = withPanel)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
-        // A click or tap on the video does what OK does.
+        // A click or tap on the video does what OK does; a vertical swipe does what Up/Down do.
         if (fullscreenKeys) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) {
                 detectTapGestures {
                     runCatching { rootFocus.requestFocus() } // keep the remote working after a click
                     if (state.value.ui.archive != null) vm.togglePause() else vm.onOk()
                 }
+            }.pointerInput(Unit) {
+                var dy = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dy = 0f },
+                    onDragEnd = {
+                        if (abs(dy) >= SWIPE_DP.dp.toPx()) {
+                            runCatching { rootFocus.requestFocus() }
+                            val up = dy < 0 // finger moves up, like the Up key
+                            if (state.value.ui.archive != null) vm.seekPress(if (up) +1 else -1, true, false)
+                            else vm.stepChannel(if (up) +1 else -1)
+                        }
+                    },
+                ) { change, amount -> change.consume(); dy += amount }
             })
         }
 
@@ -223,6 +238,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         AnimatedNullable(dialog, enter = Motion.pop, exit = Motion.unpop) { MessageDialog(it.title, it.message, it.buttons) }
     }
 }
+
+private const val SWIPE_DP = 48
 
 private data class PointerState(val ui: PlaybackUi, val blocking: Boolean, val fullscreen: Boolean)
 
