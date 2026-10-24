@@ -7,6 +7,7 @@ import app.remotely.AppContainer
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
 import app.remotely.data.api.Programme
+import app.remotely.data.repo.ChannelGroup
 import app.remotely.data.repo.ChannelLists
 import app.remotely.data.repo.EpgDay
 import app.remotely.data.repo.EpgLogic
@@ -30,7 +31,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class Overlay { NONE, LIST, MENU, EPG }
-enum class ListMode { FAVORITES, ALL }
+enum class ListMode { FAVORITES, ALL, GROUP }
 
 sealed interface Dialog {
     data class Favorite(val channel: Channel, val isFavorite: Boolean) : Dialog
@@ -61,9 +62,13 @@ data class ArchiveUi(
 data class PlaybackUi(
     val overlay: Overlay = Overlay.NONE,
     val mode: ListMode? = null,
+    /** Category code while [mode] is [ListMode.GROUP]. */
+    val group: String? = null,
     val current: Channel? = null,
     val focused: Channel? = null,
     val bannerVisible: Boolean = false,
+    /** Banner opened with OK: shows the programme description too. */
+    val bannerDetailed: Boolean = false,
     val now: Programme? = null,
     val next: Programme? = null,
     /** Current and following programmes of the focused channel (list overlay). */
@@ -111,6 +116,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             while (isActive) {
                 delay(30 * 60_000)
                 runCatching { c.channels.refresh() }
+                runCatching { c.channels.refreshGroups() }
             }
         }
     }
@@ -122,6 +128,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 c.channels.refresh()
                 c.epg.refreshDepth()
                 _ui.update { it.copy(channelsFailed = false) }
+                viewModelScope.launch { runCatching { c.channels.refreshGroups() }.onFailure { c.log.add("Категории: ${it.javaClass.simpleName}") } }
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -148,12 +155,32 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     private fun mode(): ListMode = _ui.value.mode ?: if (lists.value.favorites.isNotEmpty()) ListMode.FAVORITES else ListMode.ALL
 
+    private fun group(): ChannelGroup? = lists.value.groups.firstOrNull { it.code == _ui.value.group }
+
     fun activeList(): List<Channel> {
         val l = lists.value
-        return if (mode() == ListMode.FAVORITES && l.favorites.isNotEmpty()) l.favorites else l.all
+        return when (currentMode()) {
+            ListMode.FAVORITES -> l.favorites
+            ListMode.GROUP -> group()?.channels ?: l.all
+            ListMode.ALL -> l.all
+        }
     }
 
-    fun currentMode(): ListMode = if (mode() == ListMode.FAVORITES && lists.value.favorites.isNotEmpty()) ListMode.FAVORITES else ListMode.ALL
+    /** The mode actually shown: an empty favourites list or a vanished category falls back to all channels. */
+    fun currentMode(): ListMode = when (mode()) {
+        ListMode.FAVORITES -> if (lists.value.favorites.isNotEmpty()) ListMode.FAVORITES else ListMode.ALL
+        ListMode.GROUP -> if (group() != null) ListMode.GROUP else ListMode.ALL
+        ListMode.ALL -> ListMode.ALL
+    }
+
+    /** Category code of the list on screen, or null. */
+    fun currentGroup(): String? = if (currentMode() == ListMode.GROUP) _ui.value.group else null
+
+    fun listTitle(): String = when (currentMode()) {
+        ListMode.FAVORITES -> "★ Избранное"
+        ListMode.GROUP -> group()?.name ?: "Все каналы"
+        ListMode.ALL -> "Все каналы"
+    }
 
     // ---- live ----
 
@@ -189,15 +216,28 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    fun showBanner() {
+    /** [detailed]: with the programme description, and kept longer so there is time to read it. */
+    fun showBanner(detailed: Boolean = false) {
         val ch = _ui.value.current ?: return
-        _ui.update { it.copy(bannerVisible = true) }
+        _ui.update { it.copy(bannerVisible = true, bannerDetailed = detailed) }
         bannerJob?.cancel()
         bannerJob = viewModelScope.launch {
+            val started = c.clock.nowMs()
             loadNowNext(ch)?.let { (n, x) -> _ui.update { u -> if (u.current?.code == ch.code) u.copy(now = n, next = x) else u } }
-            delay(5_000)
-            _ui.update { it.copy(bannerVisible = false) }
+            delay(((if (detailed) DETAILED_BANNER_MS else BANNER_MS) - (c.clock.nowMs() - started)).coerceAtLeast(1_000))
+            hideBanner()
         }
+    }
+
+    fun hideBanner() {
+        bannerJob?.cancel()
+        _ui.update { it.copy(bannerVisible = false, bannerDetailed = false) }
+    }
+
+    /** OK in fullscreen: first the programme with its description, OK again opens the channel list. */
+    fun onOk() {
+        val u = _ui.value
+        if (u.bannerVisible && u.bannerDetailed) openList() else showBanner(detailed = true)
     }
 
     private suspend fun loadNowNext(ch: Channel): Pair<Programme?, Programme?>? = runCatching {
@@ -209,7 +249,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     // ---- list overlay ----
 
     fun openList() {
-        _ui.update { it.copy(overlay = Overlay.LIST, focused = it.current, focusedUpcoming = emptyList(), bannerVisible = false) }
+        bannerJob?.cancel()
+        _ui.update { it.copy(overlay = Overlay.LIST, focused = it.current, focusedUpcoming = emptyList(), bannerVisible = false, bannerDetailed = false) }
         _ui.value.current?.let(::loadUpcoming)
         viewModelScope.launch { runCatching { c.channels.refresh() } }
     }
@@ -284,7 +325,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun selectMode(m: ListMode) {
-        _ui.update { it.copy(mode = m, overlay = Overlay.LIST) }
+        _ui.update { it.copy(mode = m, group = null, overlay = Overlay.LIST) }
+    }
+
+    fun selectGroup(code: String) {
+        _ui.update { it.copy(mode = ListMode.GROUP, group = code, overlay = Overlay.LIST) }
     }
 
     fun askFavorite(ch: Channel) {
@@ -310,7 +355,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         val days = EpgLogic.days(now, c.epg.depthMs)
         val today = days.indexOfFirst { it.date == ZalaTime.localDate(now) }.coerceAtLeast(0)
         val returnTo = if (_ui.value.overlay == Overlay.LIST) Overlay.LIST else Overlay.NONE
-        _ui.update { it.copy(overlay = Overlay.EPG, bannerVisible = false, epg = EpgUi(ch, days, today, emptyList(), true, returnTo)) }
+        bannerJob?.cancel()
+        _ui.update { it.copy(overlay = Overlay.EPG, bannerVisible = false, bannerDetailed = false, epg = EpgUi(ch, days, today, emptyList(), true, returnTo)) }
         loadEpgDay()
     }
 
@@ -482,15 +528,19 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     // ---- back / dialogs / toast ----
 
-    /** Back walks outwards: fullscreen → channel list → menu → "exit the app?". */
+    /**
+     * Back walks outwards: fullscreen → channel list → menu → fullscreen again. It never leaves the app:
+     * that takes «Выход» in the menu, so pressing Back a few times while browsing does not ask to quit.
+     */
     fun onBack() {
         val u = _ui.value
         when {
             u.dialog != null -> dismissDialog()
             u.overlay == Overlay.EPG -> epgBack()
-            u.overlay == Overlay.MENU -> askExit()
+            u.overlay == Overlay.MENU -> closeOverlays()
             u.overlay == Overlay.LIST -> openMenu()
             u.archive != null -> _ui.update { it.copy(dialog = Dialog.ExitArchive) }
+            u.bannerVisible && u.bannerDetailed -> hideBanner()
             else -> openList()
         }
     }
@@ -513,6 +563,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private companion object {
         const val ZAP_SETTLE_MS = 300L
         const val ZAP_REPEAT_MS = 250L
+        const val BANNER_MS = 5_000L
+        const val DETAILED_BANNER_MS = 10_000L
         /** A recording this much shorter than its programme was cut by the server. */
         const val CUT_MARGIN_MS = 60_000L
     }

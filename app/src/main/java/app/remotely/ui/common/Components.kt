@@ -17,7 +17,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -36,6 +41,18 @@ import androidx.tv.material3.Text
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 
+/**
+ * tv-material3 surfaces react only to the remote. This adds a mouse click / finger tap (and a long press)
+ * for TV boxes with a mouse and for phones.
+ */
+fun Modifier.pointerClick(onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+    val click by rememberUpdatedState(onClick)
+    val longClick by rememberUpdatedState(onLongClick)
+    pointerInput(Unit) {
+        detectTapGestures(onLongPress = { longClick?.invoke() ?: click() }, onTap = { click() })
+    }
+}
+
 /** Big focusable button with the yellow focus frame. */
 @Composable
 fun BigButton(
@@ -46,7 +63,7 @@ fun BigButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        modifier = modifier.then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier).pointerClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
         border = FocusStyle.border(),

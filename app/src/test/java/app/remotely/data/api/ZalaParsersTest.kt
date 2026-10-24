@@ -11,6 +11,15 @@ import org.junit.Test
 class ZalaParsersTest {
     private val epg = "https://itvepg177.tv.zala.by:443"
 
+    @Test fun columnsByPortalSortNumWithoutAllChannels() {
+        val body = """{"returncode":"0","data":[
+            {"columnname":"Все каналы","columncode":"0803","columntype":"2","sortnum":"15"},
+            {"columnname":"Спорт","columncode":"0804","columntype":"2","sortnum":"3"},
+            {"columnname":"Кино","columncode":"0807","columntype":"2","sortnum":"10"},
+            {"columnname":"Фильмы","columncode":"0901","columntype":"1","sortnum":"20"}]}"""
+        assertEquals(listOf("Спорт", "Кино"), ZalaParsers.columns(body).map { it.name })
+    }
+
     @Test fun loginEntry() {
         val e = ZalaParsers.loginEntry(Fixtures.LOGIN1_OK)
         assertEquals(epg, e.epgBase)

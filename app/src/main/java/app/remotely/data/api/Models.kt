@@ -19,6 +19,9 @@ data class Channel(
     val nowEndMs: Long = 0,
 )
 
+/** Portal channel category ("column" under 08), e.g. «Кино», «Спорт». */
+data class ChannelColumn(val code: String, val name: String, val sortNum: Int)
+
 @Serializable
 data class Programme(
     val code: String,

@@ -6,14 +6,24 @@ import app.remotely.data.api.ZalaApi
 import app.remotely.data.session.SessionManager
 import app.remotely.data.store.Settings
 import app.remotely.data.store.SettingsSource
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.serialization.Serializable
 
+/** A portal category with the codes of its channels. */
 @Serializable
-data class ChannelSnapshot(val channels: List<Channel>, val subscribed: Set<Int>)
+data class GroupSnapshot(val code: String, val name: String, val channels: List<String>)
+
+@Serializable
+data class ChannelSnapshot(val channels: List<Channel>, val subscribed: Set<Int>, val groups: List<GroupSnapshot> = emptyList())
+
+/** A category as shown in the menu: its channels in the user's order, hidden ones left out. */
+data class ChannelGroup(val code: String, val name: String, val channels: List<Channel>)
 
 data class ChannelLists(
     /** Subscribed, not hidden, in user order. */
@@ -22,6 +32,8 @@ data class ChannelLists(
     val favorites: List<Channel>,
     /** Everything subscribed incl. hidden (settings screen). */
     val manageable: List<Channel>,
+    /** Portal categories that have at least one visible channel. */
+    val groups: List<ChannelGroup> = emptyList(),
 ) {
     /** Numbers follow the user order (1, 2, 3...), like in the official app; the portal number is kept for the API. */
     private val numbers: Map<String, Int> = all.withIndex().associate { it.value.code to it.index + 1 }
@@ -40,6 +52,10 @@ object ChannelArranger {
             all = visible,
             favorites = s.favorites.mapNotNull { byCode[it] },
             manageable = ordered,
+            groups = snapshot.groups.mapNotNull { g ->
+                val codes = g.channels.toSet()
+                visible.filter { it.code in codes }.takeIf { it.isNotEmpty() }?.let { ChannelGroup(g.code, g.name, it) }
+            },
         )
     }
 }
@@ -63,10 +79,24 @@ class ChannelRepository(
     suspend fun refresh() {
         val (channels, subscribed) = session.withSession { s -> api.channels(s) to runCatching { api.subscribedNumbers(s) }.getOrDefault(emptySet()) }
         if (channels.isEmpty()) return
-        val snap = ChannelSnapshot(channels, subscribed)
+        val snap = ChannelSnapshot(channels, subscribed, snapshot.value.groups)
         snapshot.value = snap
         cache.write(FILE, ChannelSnapshot.serializer(), snap)
         log.add("Каналы обновлены: ${channels.size}")
+    }
+
+    /** Categories change rarely and cost a request each, so they are fetched apart from the channel list. */
+    suspend fun refreshGroups() {
+        val groups = session.withSession { s ->
+            coroutineScope {
+                api.columns(s).map { col -> async { GroupSnapshot(col.code, col.name, api.channels(s, col.code).map { it.code }) } }.awaitAll()
+            }
+        }.filter { it.channels.isNotEmpty() }
+        if (groups.isEmpty()) return
+        val snap = snapshot.value.copy(groups = groups)
+        snapshot.value = snap
+        if (snap.channels.isNotEmpty()) cache.write(FILE, ChannelSnapshot.serializer(), snap)
+        log.add("Категории обновлены: ${groups.size}")
     }
 
     private companion object {

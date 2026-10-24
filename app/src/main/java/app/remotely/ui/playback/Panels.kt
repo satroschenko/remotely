@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,10 +63,12 @@ import androidx.tv.material3.Text
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
 import app.remotely.data.api.Programme
+import app.remotely.data.repo.ChannelGroup
 import app.remotely.data.repo.ChannelLists
 import app.remotely.data.repo.EpgLogic
 import app.remotely.player.Phase
 import app.remotely.ui.common.ProgressBar
+import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import coil.compose.AsyncImage
@@ -165,9 +169,9 @@ private fun SmoothList(state: LazyListState, padding: PaddingValues, spacing: Dp
 }
 
 @Composable
-private fun HintChip(arrow: String, label: String, arrowFirst: Boolean) {
+private fun HintChip(arrow: String, label: String, arrowFirst: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF26324A)).padding(horizontal = 10.dp, vertical = 4.dp),
+        Modifier.pointerClick(onClick = onClick).clip(RoundedCornerShape(8.dp)).background(Color(0xFF26324A)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (arrowFirst) Text("$arrow ", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
@@ -197,7 +201,7 @@ fun BoxScope.ChannelPanel(
     dimmed: Boolean = false,
     dialogOpen: Boolean = false,
 ) {
-    val mode = vm.currentMode()
+    val mode = vm.currentMode() to vm.currentGroup()
     val list = vm.activeList()
     // Row that owns focus; picked once per list so scrolling does not rebuild the rows around it.
     var focusIndex by remember(mode) {
@@ -230,15 +234,15 @@ fun BoxScope.ChannelPanel(
             .alpha(if (dimmed) 0.5f else 1f),
     ) {
         Text(
-            if (mode == ListMode.FAVORITES) "★ Избранное" else "Все каналы", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            vm.listTitle(), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp),
         )
         Spacer(Modifier.height(10.dp))
         // Narrow panel: hints get their own line under the title.
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            HintChip("◀", "Меню", arrowFirst = true)
+            HintChip("◀", "Меню", arrowFirst = true, onClick = vm::openMenu)
             Spacer(Modifier.weight(1f))
-            HintChip("▶", "Программа", arrowFirst = false)
+            HintChip("▶", "Программа", arrowFirst = false) { (ui.focused ?: ui.current)?.let(vm::openEpg) }
         }
         Spacer(Modifier.height(12.dp))
         if (list.isEmpty()) {
@@ -294,7 +298,8 @@ private fun ChannelRow(
         onClick = onClick,
         onLongClick = onLongClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() }
+            .then(if (enabled) Modifier.pointerClick(onLongClick, onClick) else Modifier),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
         border = FocusStyle.border(),
@@ -326,36 +331,56 @@ private fun ChannelRow(
 
 @UnstableApi
 @Composable
-fun BoxScope.SideMenu(vm: PlaybackViewModel, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit) {
-    val first = remember { FocusRequester() }
+fun BoxScope.SideMenu(vm: PlaybackViewModel, groups: List<ChannelGroup>, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit) {
+    val mode = vm.currentMode()
+    val group = vm.currentGroup()
+    // Focus starts on the list being shown, so OK alone returns to it.
+    val current = remember { FocusRequester() }
+    fun Modifier.currentIf(yes: Boolean) = if (yes) focusRequester(current) else this
     Column(
-        Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid)
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-        MenuItem("Все каналы", Modifier.focusRequester(first)) { vm.selectMode(ListMode.ALL) }
-        MenuItem("★ Избранное") {
-            if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
+        // Categories make the list longer than the screen: it scrolls, settings and exit stay at the bottom.
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
+            MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES), selected = mode == ListMode.FAVORITES) {
+                if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
+            }
+            if (groups.isNotEmpty()) {
+                Text("Категории", fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(start = 18.dp, top = 8.dp))
+                groups.forEach { g ->
+                    MenuItem(g.name, Modifier.currentIf(g.code == group), selected = g.code == group) { vm.selectGroup(g.code) }
+                }
+            }
         }
         MenuItem("⚙ Настройки", onClick = onOpenSettings)
-        Spacer(Modifier.weight(1f))
         MenuItem("✕ Выход", onClick = onExit)
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
-    LaunchedEffect(dialogOpen) { if (!dialogOpen) runCatching { first.requestFocus() } }
+    LaunchedEffect(dialogOpen) { if (!dialogOpen) runCatching { current.requestFocus() } }
 }
 
 @Composable
-private fun MenuItem(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MenuItem(text: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().pointerClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
         border = FocusStyle.border(),
         scale = FocusStyle.scale(),
     ) {
-        Text(text, fontSize = 22.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
+        Text(
+            text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+        )
     }
 }
 
@@ -457,7 +482,8 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
         Text("${vm.lists.value.numberOf(e.channel)}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim)
+            Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim,
+                modifier = Modifier.pointerClick { vm.epgDay(-1) })
             // The panel fits three day tabs: the selected day and its neighbours.
             val from = (e.dayIndex - 1).coerceAtMost(e.days.size - 3).coerceAtLeast(0)
             e.days.forEachIndexed { i, d ->
@@ -473,7 +499,8 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
-            Text("▶", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim)
+            Text("▶", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex < e.days.lastIndex) Palette.Focus else Palette.TextDim,
+                modifier = Modifier.pointerClick { vm.epgDay(+1) })
         }
         Spacer(Modifier.height(12.dp))
         when {
@@ -518,7 +545,7 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
     val past = p.endMs <= now
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() }.pointerClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = FocusStyle.colors(if (onAir) Color(0xFF243B55) else Palette.Row),
         border = FocusStyle.border(),
@@ -539,7 +566,7 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
 }
 
 @Composable
-fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long) {
+fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean) {
     Column(
         Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -562,8 +589,11 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
             }
             ProgressBar(EpgLogic.progress(start, end, nowMs), Modifier.fillMaxWidth())
         }
+        // At most a third of the screen; the full text is in the programme list (→).
+        val description = now?.description?.takeIf { detailed && it.isNotBlank() }
+        if (description != null) Text(description, fontSize = 17.sp, color = Palette.Text, maxLines = 5, overflow = TextOverflow.Ellipsis)
         next?.let { Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        Text("OK — каналы    → — программа передач", fontSize = 14.sp, color = Palette.TextDim)
+        Text(if (detailed) "OK — каналы    → — программа передач" else "OK — описание    ← — каналы    → — программа передач", fontSize = 14.sp, color = Palette.TextDim)
     }
 }
 

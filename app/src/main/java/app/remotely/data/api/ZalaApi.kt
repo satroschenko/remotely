@@ -150,10 +150,15 @@ class ZalaApi(
             .addQueryParameter("timestamp", now()).build())
     }
 
-    suspend fun channels(s: Session): List<Channel> = ZalaParsers.channels(
+    suspend fun channels(s: Session, column: String = ZalaParsers.ALL_CHANNELS_COLUMN): List<Channel> = ZalaParsers.channels(
         get("${s.frameBase}/action/sdk_getchannellist.jsp".toHttpUrl().newBuilder()
-            .addQueryParameter("columncode", "0803").build()),
+            .addQueryParameter("columncode", column).build()),
         s.epgBase,
+    )
+
+    suspend fun columns(s: Session): List<ChannelColumn> = ZalaParsers.columns(
+        get("${s.epgBase}/iptvepg/frame1258/sdk_getcolumnlist.jsp".toHttpUrl().newBuilder()
+            .addQueryParameter("columncode", "08").build()),
     )
 
     suspend fun subscribedNumbers(s: Session): Set<Int> =

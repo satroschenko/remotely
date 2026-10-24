@@ -94,7 +94,7 @@ object ZalaParsers {
                 name = c.text("channelname"),
                 number = number,
                 mixno = c.str("mixno"),
-                columnCode = c.str("columncode").ifEmpty { "0803" },
+                columnCode = c.str("columncode").ifEmpty { ALL_CHANNELS_COLUMN },
                 definition = c.str("definition").ifEmpty { "1" },
                 logoUrl = logoUrl(c.str("posterimage"), epgBase),
                 hasArchive = c.str("tvodavailable") == "1",
@@ -104,6 +104,24 @@ object ZalaParsers {
             )
         }
     }
+
+    /**
+     * Channel categories; "Все каналы" (the full list) is left out. Lowest sortnum first: that puts the themes
+     * (Детские, Спорт, Кино…) ahead of the service lists (HD, Общедоступный пакет).
+     */
+    fun columns(body: String): List<ChannelColumn> {
+        val o = json(body)
+        requireOk(o)
+        val data = o["data"] as? JsonArray ?: return emptyList()
+        return data.mapNotNull { el ->
+            val c = el as? JsonObject ?: return@mapNotNull null
+            val code = c.str("columncode")
+            if (code.isEmpty() || code == ALL_CHANNELS_COLUMN || c.str("columntype") != "2") return@mapNotNull null
+            ChannelColumn(code, c.text("columnname"), c.str("sortnum").toIntOrNull() ?: 0)
+        }.sortedBy { it.sortNum }
+    }
+
+    const val ALL_CHANNELS_COLUMN = "0803"
 
     /** "../images/markurl/x.jpg" is relative to /iptvepg/frameNNNN/ → /iptvepg/images/markurl/x.jpg. */
     fun logoUrl(poster: String, epgBase: String): String? = when {

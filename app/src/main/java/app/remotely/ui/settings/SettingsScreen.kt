@@ -62,6 +62,7 @@ import app.remotely.data.session.SessionState
 import app.remotely.data.store.Quality
 import app.remotely.data.store.Settings
 import app.remotely.ui.common.MessageDialog
+import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
@@ -109,7 +110,7 @@ private fun Title(text: String) {
 private fun Item(text: String, value: String? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().pointerClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
         border = FocusStyle.border(),

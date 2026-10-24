@@ -33,6 +33,16 @@ class RepoLogicTest {
         assertEquals(listOf("c", "a", "b"), l.manageable.map { it.code })
     }
 
+    @Test fun groupsFollowUserOrderAndSkipHiddenAndEmpty() {
+        val groups = listOf(
+            GroupSnapshot("0807", "Кино", listOf("a", "c", "x")),
+            GroupSnapshot("0804", "Спорт", listOf("b")),
+        )
+        val l = ChannelArranger.arrange(snap.copy(groups = groups), Settings(hidden = setOf("b"), order = listOf("c")))
+        assertEquals(listOf("Кино"), l.groups.map { it.name }) // Спорт has only the hidden channel
+        assertEquals(listOf("c", "a"), l.groups[0].channels.map { it.code }) // x is not subscribed
+    }
+
     @Test fun numbersFollowUserOrder() {
         val l = ChannelArranger.arrange(snap, Settings(hidden = setOf("b"), order = listOf("c")))
         assertEquals(listOf(1, 2), l.all.map { l.numberOf(it) }) // c=1, a=2; hidden b does not take a number

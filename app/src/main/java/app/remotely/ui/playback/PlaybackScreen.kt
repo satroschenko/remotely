@@ -23,7 +23,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +82,11 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     }
 
     val withPanel = ui.overlay != Overlay.NONE
+    // A touch or mouse click can leave nothing focused; Back then bypasses the key handler below
+    // and would close the app. Route it the same way.
+    BackHandler { if (blocking && ui.dialog == null) vm.askExit() else vm.onBack() }
+    // Pointer handlers live as long as the screen; they read the current state through this.
+    val state = rememberUpdatedState(PointerState(ui, blocking, fullscreenKeys))
 
     Box(
         Modifier
@@ -84,7 +96,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                 val down = ev.type == KeyEventType.KeyDown
                 val up = ev.type == KeyEventType.KeyUp
                 val repeat = ev.nativeKeyEvent.repeatCount > 0
-                // Back is handled for every state here: the app only exits through the "exit?" dialog.
+                // Back is handled for every state here: the app only exits through «Выход» in the menu.
                 if (ev.key == Key.Back) {
                     if (up) {
                         if (blocking && ui.dialog == null) vm.askExit() else vm.onBack()
@@ -116,11 +128,44 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     }
                 }
             }
+            // Mouse: the right button is Back everywhere; the wheel zaps (live) or seeks (archive) in fullscreen.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val s = state.value
+                        when (ev.type) {
+                            PointerEventType.Press -> if (ev.buttons.isSecondaryPressed) {
+                                ev.changes.forEach { it.consume() }
+                                if (s.blocking && s.ui.dialog == null) vm.askExit() else vm.onBack()
+                            }
+                            PointerEventType.Scroll -> if (s.fullscreen) {
+                                val dy = ev.changes.sumOf { it.scrollDelta.y.toDouble() }
+                                if (dy != 0.0) {
+                                    ev.changes.forEach { it.consume() }
+                                    val towardsEnd = dy > 0 // wheel down, like the Down key
+                                    if (s.ui.archive != null) vm.seekPress(if (towardsEnd) -1 else +1, false, false)
+                                    else vm.stepChannel(if (towardsEnd) -1 else +1)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             .focusRequester(rootFocus)
             .focusable(),
     ) {
         VideoSurface(c.engine.player, preview = withPanel)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
+        // A click or tap on the video does what OK does.
+        if (fullscreenKeys) {
+            Box(Modifier.fillMaxSize().pointerInput(Unit) {
+                detectTapGestures {
+                    runCatching { rootFocus.requestFocus() } // keep the remote working after a click
+                    if (state.value.ui.archive != null) vm.togglePause() else vm.onOk()
+                }
+            })
+        }
 
         AnimatedVisibility(
             visible = ui.overlay == Overlay.LIST || ui.overlay == Overlay.MENU,
@@ -133,7 +178,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
             Box(Modifier.fillMaxSize()) {
-                SideMenu(vm, dialogOpen = ui.dialog != null, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = { activity?.finish() })
+                SideMenu(vm, lists.groups, dialogOpen = ui.dialog != null, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = vm::askExit)
             }
         }
         AnimatedNullable(ui.epg.takeIf { ui.overlay == Overlay.EPG }, enter = Motion.fromRight, exit = Motion.toRight) { epg ->
@@ -145,7 +190,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = Motion.fromBottom, exit = Motion.toBottom,
-        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs()) } }
+        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
 
         StatusPill(ps.phase, overPreview = withPanel)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
@@ -178,15 +223,17 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     }
 }
 
+private data class PointerState(val ui: PlaybackUi, val blocking: Boolean, val fullscreen: Boolean)
+
 private data class DialogSpec(val title: String, val message: String?, val buttons: List<Pair<String, () -> Unit>>)
 
 private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean): Boolean = when (key) {
     Key.DirectionUp, Key.ChannelUp -> { if (down) vm.stepChannel(+1, repeat); true }
     Key.DirectionDown, Key.ChannelDown -> { if (down) vm.stepChannel(-1, repeat); true }
-    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (up) vm.openList(); true }
+    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (up) vm.onOk(); true }
     Key.DirectionLeft -> { if (down && !repeat) vm.openList(); true }
     Key.DirectionRight -> { if (down && !repeat) ui.current?.let(vm::openEpg); true }
-    Key.Info, Key.Menu -> { if (down) vm.showBanner(); true }
+    Key.Info, Key.Menu -> { if (down) vm.showBanner(detailed = true); true }
     else -> false
 }
 
