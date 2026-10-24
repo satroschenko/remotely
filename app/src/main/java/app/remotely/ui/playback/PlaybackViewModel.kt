@@ -317,6 +317,19 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun openGroups() = _ui.update { it.copy(groupsOpen = true) }
 
+    /** Menu item under focus: [MENU_CATEGORIES], a category code, or null. */
+    var menuFocus: String? = null
+
+    /** → in the menu goes one step deeper: into the categories, into the focused category, else back to the list. */
+    fun menuRight() {
+        val f = menuFocus
+        when {
+            !_ui.value.groupsOpen && f == MENU_CATEGORIES -> openGroups()
+            _ui.value.groupsOpen && f != null && lists.value.groups.any { it.code == f } -> selectGroup(f)
+            else -> closeMenu()
+        }
+    }
+
     fun closeGroups() = _ui.update { it.copy(groupsOpen = false) }
 
     /** Leaving to settings: come back to plain fullscreen on the current channel. */

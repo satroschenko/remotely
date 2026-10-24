@@ -269,7 +269,7 @@ fun BoxScope.ChannelPanel(
             }
         }
     }
-    LaunchedEffect(dimmed, dialogOpen, list.size) {
+    LaunchedEffect(dimmed, dialogOpen, list.size, mode) {
         if (!dimmed && !dialogOpen && list.isNotEmpty()) {
             focusIndex = focusIndex.coerceIn(0, list.lastIndex)
             val visible = state.layoutInfo.visibleItemsInfo
@@ -333,7 +333,8 @@ private fun ChannelRow(
 @UnstableApi
 @Composable
 fun BoxScope.SideMenu(
-    vm: PlaybackViewModel, groups: List<ChannelGroup>, groupsOpen: Boolean, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit,
+    vm: PlaybackViewModel, groups: List<ChannelGroup>, groupsOpen: Boolean, active: Boolean, dialogOpen: Boolean,
+    onOpenSettings: () -> Unit, onExit: () -> Unit,
 ) {
     val mode = vm.currentMode()
     val group = vm.currentGroup()
@@ -356,7 +357,9 @@ fun BoxScope.SideMenu(
             ) {
                 groups.forEachIndexed { i, g ->
                     val here = if (group != null) g.code == group else i == 0
-                    MenuItem(g.name, Modifier.currentIf(here), selected = g.code == group) { vm.selectGroup(g.code) }
+                    MenuItem(g.name, Modifier.currentIf(here).onFocusChanged { if (it.isFocused) vm.menuFocus = g.code }, selected = g.code == group) {
+                        vm.selectGroup(g.code)
+                    }
                 }
             }
         } else {
@@ -368,7 +371,7 @@ fun BoxScope.SideMenu(
             }
             if (groups.isNotEmpty()) {
                 // The chosen category is named here, so a short channel list is never a surprise.
-                MenuItem("☰ Категории", Modifier.currentIf(onCategories), selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
+                MenuItem("☰ Категории", Modifier.currentIf(onCategories).onFocusChanged { vm.menuFocus = if (it.isFocused) MENU_CATEGORIES else null }, selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
             }
             Spacer(Modifier.weight(1f))
             MenuItem("⚙ Настройки", onClick = onOpenSettings)
@@ -376,13 +379,16 @@ fun BoxScope.SideMenu(
         }
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
-    LaunchedEffect(dialogOpen, groupsOpen) {
-        if (!dialogOpen) {
+    // Not while the menu slides away: the channel list has the focus by then.
+    LaunchedEffect(dialogOpen, groupsOpen, active) {
+        if (active && !dialogOpen) {
             withFrameNanos { }
             runCatching { current.requestFocus() }
         }
     }
 }
+
+const val MENU_CATEGORIES = "categories"
 
 @Composable
 private fun MenuItem(
