@@ -64,6 +64,8 @@ data class PlaybackUi(
     val mode: ListMode? = null,
     /** Category code while [mode] is [ListMode.GROUP]. */
     val group: String? = null,
+    /** The menu shows its second page, the list of categories. */
+    val groupsOpen: Boolean = false,
     val current: Channel? = null,
     val focused: Channel? = null,
     val bannerVisible: Boolean = false,
@@ -302,21 +304,25 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun closeOverlays() {
         previewJob?.cancel()
         val cur = _ui.value.current
-        _ui.update { it.copy(overlay = Overlay.NONE, epg = null) }
+        _ui.update { it.copy(overlay = Overlay.NONE, epg = null, groupsOpen = false) }
         val t = player.state.value.target
         if (cur != null && _ui.value.archive == null && (t !is PlaybackTarget.Live || t.channel.code != cur.code)) {
             player.play(PlaybackTarget.Live(cur))
         }
     }
 
-    fun openMenu() = _ui.update { it.copy(overlay = Overlay.MENU) }
+    fun openMenu() = _ui.update { it.copy(overlay = Overlay.MENU, groupsOpen = false) }
 
-    fun closeMenu() = _ui.update { it.copy(overlay = Overlay.LIST) }
+    fun closeMenu() = _ui.update { it.copy(overlay = Overlay.LIST, groupsOpen = false) }
+
+    fun openGroups() = _ui.update { it.copy(groupsOpen = true) }
+
+    fun closeGroups() = _ui.update { it.copy(groupsOpen = false) }
 
     /** Leaving to settings: come back to plain fullscreen on the current channel. */
     fun resetOverlays() {
         previewJob?.cancel()
-        _ui.update { it.copy(overlay = Overlay.NONE, epg = null, dialog = null, focused = it.current) }
+        _ui.update { it.copy(overlay = Overlay.NONE, epg = null, dialog = null, focused = it.current, groupsOpen = false) }
         val cur = _ui.value.current
         val t = player.state.value.target
         if (cur != null && _ui.value.archive == null && t is PlaybackTarget.Live && t.channel.code != cur.code) {
@@ -325,11 +331,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun selectMode(m: ListMode) {
-        _ui.update { it.copy(mode = m, group = null, overlay = Overlay.LIST) }
+        _ui.update { it.copy(mode = m, group = null, overlay = Overlay.LIST, groupsOpen = false) }
     }
 
     fun selectGroup(code: String) {
-        _ui.update { it.copy(mode = ListMode.GROUP, group = code, overlay = Overlay.LIST) }
+        _ui.update { it.copy(mode = ListMode.GROUP, group = code, overlay = Overlay.LIST, groupsOpen = false) }
     }
 
     fun askFavorite(ch: Channel) {
@@ -529,7 +535,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     // ---- back / dialogs / toast ----
 
     /**
-     * Back walks outwards: fullscreen → channel list → menu → fullscreen again. It never leaves the app:
+     * Back walks outwards: fullscreen → channel list → menu → fullscreen again (from the categories page:
+     * back to the menu first). It never leaves the app:
      * that takes «Выход» in the menu, so pressing Back a few times while browsing does not ask to quit.
      */
     fun onBack() {
@@ -537,6 +544,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         when {
             u.dialog != null -> dismissDialog()
             u.overlay == Overlay.EPG -> epgBack()
+            u.overlay == Overlay.MENU && u.groupsOpen -> closeGroups()
             u.overlay == Overlay.MENU -> closeOverlays()
             u.overlay == Overlay.LIST -> openMenu()
             u.archive != null -> _ui.update { it.copy(dialog = Dialog.ExitArchive) }

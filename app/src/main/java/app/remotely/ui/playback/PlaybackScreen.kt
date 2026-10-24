@@ -112,6 +112,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     }
                     Overlay.MENU -> when (ev.key) {
                         Key.DirectionRight -> { if (down) vm.closeMenu(); true }
+                        Key.DirectionLeft -> { if (down && ui.groupsOpen) vm.closeGroups(); ui.groupsOpen }
                         else -> false
                     }
                     Overlay.EPG -> when (ev.key) {
@@ -178,7 +179,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
             Box(Modifier.fillMaxSize()) {
-                SideMenu(vm, lists.groups, dialogOpen = ui.dialog != null, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = vm::askExit)
+                SideMenu(vm, lists.groups, ui.groupsOpen, dialogOpen = ui.dialog != null, onOpenSettings = { vm.resetOverlays(); onOpenSettings() }, onExit = vm::askExit)
             }
         }
         AnimatedNullable(ui.epg.takeIf { ui.overlay == Overlay.EPG }, enter = Motion.fromRight, exit = Motion.toRight) { epg ->

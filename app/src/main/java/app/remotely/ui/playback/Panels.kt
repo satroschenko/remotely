@@ -74,6 +74,7 @@ import app.remotely.ui.theme.Palette
 import coil.compose.AsyncImage
 import android.os.SystemClock
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -331,43 +332,62 @@ private fun ChannelRow(
 
 @UnstableApi
 @Composable
-fun BoxScope.SideMenu(vm: PlaybackViewModel, groups: List<ChannelGroup>, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit) {
+fun BoxScope.SideMenu(
+    vm: PlaybackViewModel, groups: List<ChannelGroup>, groupsOpen: Boolean, dialogOpen: Boolean, onOpenSettings: () -> Unit, onExit: () -> Unit,
+) {
     val mode = vm.currentMode()
     val group = vm.currentGroup()
-    // Focus starts on the list being shown, so OK alone returns to it.
+    // Focus starts on the list being shown, so OK alone returns to it; back from the categories page, on «Категории».
     val current = remember { FocusRequester() }
+    var fromGroups by remember { mutableStateOf(false) }
+    LaunchedEffect(groupsOpen) { if (groupsOpen) fromGroups = true }
     fun Modifier.currentIf(yes: Boolean) = if (yes) focusRequester(current) else this
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid)
             .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-        // Categories make the list longer than the screen: it scrolls, settings and exit stay at the bottom.
-        Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
-            MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES), selected = mode == ListMode.FAVORITES) {
+        if (groupsOpen) {
+            Text("‹ Категории", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.pointerClick(onClick = vm::closeGroups))
+            // Longer than the screen: the page scrolls.
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                groups.forEachIndexed { i, g ->
+                    val here = if (group != null) g.code == group else i == 0
+                    MenuItem(g.name, Modifier.currentIf(here), selected = g.code == group) { vm.selectGroup(g.code) }
+                }
+            }
+        } else {
+            Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
+            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
+            MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
                 if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
             }
             if (groups.isNotEmpty()) {
-                Text("Категории", fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(start = 18.dp, top = 8.dp))
-                groups.forEach { g ->
-                    MenuItem(g.name, Modifier.currentIf(g.code == group), selected = g.code == group) { vm.selectGroup(g.code) }
-                }
+                // The chosen category is named here, so a short channel list is never a surprise.
+                MenuItem("☰ Категории", Modifier.currentIf(onCategories), selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
             }
+            Spacer(Modifier.weight(1f))
+            MenuItem("⚙ Настройки", onClick = onOpenSettings)
+            MenuItem("✕ Выход", onClick = onExit)
         }
-        MenuItem("⚙ Настройки", onClick = onOpenSettings)
-        MenuItem("✕ Выход", onClick = onExit)
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
-    LaunchedEffect(dialogOpen) { if (!dialogOpen) runCatching { current.requestFocus() } }
+    LaunchedEffect(dialogOpen, groupsOpen) {
+        if (!dialogOpen) {
+            withFrameNanos { }
+            runCatching { current.requestFocus() }
+        }
+    }
 }
 
 @Composable
-private fun MenuItem(text: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
+private fun MenuItem(
+    text: String, modifier: Modifier = Modifier, selected: Boolean = false, hint: String? = null, more: Boolean = false, onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().pointerClick(onClick = onClick),
@@ -376,11 +396,13 @@ private fun MenuItem(text: String, modifier: Modifier = Modifier, selected: Bool
         border = FocusStyle.border(),
         scale = FocusStyle.scale(),
     ) {
-        Text(
-            text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-        )
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                if (hint != null) Text(hint, fontSize = 15.sp, color = Palette.Focus, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (more) Text("›", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
