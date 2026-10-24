@@ -403,8 +403,14 @@ private fun MenuItem(
         scale = FocusStyle.scale(),
     ) {
         Row(Modifier.padding(horizontal = 18.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            // The list on screen stays visible after the focus moves on: marker and accent colour, as in the channel list.
+            if (selected) Text("▶ ", fontSize = 18.sp, color = Palette.Focus)
             Column(Modifier.weight(1f)) {
-                Text(text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                Text(
+                    text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (selected) Palette.Focus else Color.Unspecified,
+                )
                 if (hint != null) Text(hint, fontSize = 15.sp, color = Palette.Focus, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (more) Text("›", fontSize = 24.sp, fontWeight = FontWeight.Bold)
