@@ -346,7 +346,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             now < p.endMs -> if (canRecord(e.channel, p)) _ui.update { it.copy(dialog = Dialog.StartOver(e.channel, p)) }
             else { _ui.update { it.copy(overlay = Overlay.NONE, epg = null) }; switchTo(e.channel) }
             canRecord(e.channel, p) -> playArchive(e.channel, p, 0)
-            else -> toast("Запись недоступна")
+            else -> toast("Нет в архиве")
         }
     }
 
@@ -457,11 +457,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS
                 when (val r = tl.onEnded(p, e.positionMs, e.target.startOffsetMs)) {
                     is TimelinePoint.InProgramme -> {
-                        if (cut) toast("Запись прервалась — следующая передача")
+                        if (cut) toast("В архиве обрыв — следующая передача")
                         playArchive(e.target.channel, r.programme, r.offsetMs, continued = true)
                     }
                     TimelinePoint.Live -> {
-                        if (now - (p.startMs + e.positionMs) > CUT_MARGIN_MS) toast("Дальше записи нет — прямой эфир")
+                        if (now - (p.startMs + e.positionMs) > CUT_MARGIN_MS) toast("Дальше архива нет — прямой эфир")
                         switchTo(e.target.channel)
                     }
                 }
@@ -470,10 +470,10 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val p = e.target.programme
                 val next = if (continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthMs).next(p) else null
                 if (next != null) {
-                    toast("Нет записи «${p.title}» — следующая передача")
+                    toast("«${p.title}» нет в архиве — следующая передача")
                     playArchive(e.target.channel, next, 0, continued = true)
                 } else {
-                    toast("Запись недоступна")
+                    toast("Нет в архиве")
                     switchTo(e.target.channel)
                 }
             }

@@ -160,8 +160,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                 listOf("Смотреть эфир" to { vm.watchLiveFromDialog(d.channel) }, "⟲ С начала" to { vm.playArchive(d.channel, d.programme, 0) }),
             )
             Dialog.ExitArchive -> DialogSpec(
-                "Вы смотрите запись", null,
-                listOf("Вернуться в прямой эфир" to vm::backToLive, "Продолжить запись" to vm::dismissDialog),
+                "Вы смотрите передачу из архива", null,
+                listOf("Вернуться в прямой эфир" to vm::backToLive, "Продолжить просмотр" to vm::dismissDialog),
             )
             Dialog.ExitApp -> DialogSpec(
                 "Выйти из приложения?", null,

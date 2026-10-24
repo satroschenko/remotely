@@ -532,7 +532,7 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
             }
             when {
                 onAir -> Text("● Сейчас", fontSize = 15.sp, color = Palette.Record)
-                past && recordable -> Text("▶ Запись", fontSize = 15.sp, color = Palette.Accent)
+                past && recordable -> Text("▶ Архив", fontSize = 15.sp, color = Palette.Accent)
             }
         }
     }
@@ -579,7 +579,7 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Modifier.align(Alignment.TopStart).padding(20.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("● ЗАПИСЬ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
+        Text("● АРХИВ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
         Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 18.sp, color = Palette.Text)
     }
     AnimatedVisibility(
