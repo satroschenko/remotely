@@ -69,6 +69,9 @@ import app.remotely.data.repo.EpgLogic
 import app.remotely.player.Phase
 import app.remotely.ui.common.ProgressBar
 import app.remotely.ui.common.pointerClick
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import coil.compose.AsyncImage
@@ -662,7 +665,25 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
             if (a.seekTargetMs != null) Text("   ${formatDelta(a.seekDeltaMs)}", fontSize = 24.sp, color = Palette.Text)
             if (paused) Text("   ❚❚ Пауза", fontSize = 24.sp, color = Palette.Text)
         }
-        ProgressBar(((shownWall - p.startMs).toFloat() / duration), Modifier.fillMaxWidth())
+        // Touch: tap or drag the bar to jump within the programme.
+        Box(
+            Modifier.fillMaxWidth()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        var x = down.position.x
+                        while (true) {
+                            vm.seekToFraction(x / size.width, commit = false)
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            change.consume()
+                            x = change.position.x
+                            if (!change.pressed) break
+                        }
+                        vm.seekToFraction(x / size.width, commit = true)
+                    }
+                }
+                .padding(vertical = 12.dp),
+        ) { ProgressBar(((shownWall - p.startMs).toFloat() / duration), Modifier.fillMaxWidth()) }
         Row {
             Text(ZalaTime.hhmm(p.startMs), fontSize = 16.sp, color = Palette.TextDim)
             Spacer(Modifier.weight(1f))

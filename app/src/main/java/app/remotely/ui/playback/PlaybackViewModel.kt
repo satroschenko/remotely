@@ -470,6 +470,18 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         showControls()
     }
 
+    /** Touch seek on the progress bar: [fraction] of the programme; [commit] when the finger lifts. */
+    fun seekToFraction(fraction: Float, commit: Boolean) {
+        val a = _ui.value.archive ?: return
+        val p = a.programme
+        seek.cancel()
+        val target = p.startMs + ((p.endMs - p.startMs) * fraction.coerceIn(0f, 1f)).toLong()
+        val delta = target - (p.startMs + player.positionMs)
+        _ui.update { it.copy(archive = a.copy(seekTargetMs = target, seekDeltaMs = delta)) }
+        showControls(autoHide = commit)
+        if (commit) applySeek(delta)
+    }
+
     private fun ensureArchiveTicker() {
         if (seekJob?.isActive == true) return
         seekJob = viewModelScope.launch {
