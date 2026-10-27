@@ -35,7 +35,8 @@ interface MediaEngine {
     fun setPaused(paused: Boolean)
     fun seekTo(positionMs: Long)
     fun seekToLive()
-    fun setMaxQuality(max: Boolean)
+    /** 0 = adaptive; otherwise the best track no taller than [height]. */
+    fun setMaxHeight(height: Int)
     val state: EngineState
     val playWhenReady: Boolean
     val positionMs: Long
@@ -321,7 +322,7 @@ class PlayerController(
         freeze.reset(clock.nowMs())
     }
 
-    fun setMaxQuality(max: Boolean) = engine.setMaxQuality(max)
+    fun setMaxHeight(height: Int) = engine.setMaxHeight(height)
 
     override fun onStateChanged(state: EngineState) {
         when (state) {

@@ -16,8 +16,8 @@ import app.remotely.data.repo.PlaybackRepository
 import app.remotely.data.session.SessionManager
 import app.remotely.data.store.CredentialsStore
 import app.remotely.data.store.KeystoreCipherer
-import app.remotely.data.store.Quality
 import app.remotely.data.store.SettingsStore
+import app.remotely.data.update.UpdateManager
 import app.remotely.player.ExoEngine
 import app.remotely.player.PlayerController
 import kotlinx.coroutines.Job
@@ -25,6 +25,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import java.io.File
 
 /** Manual DI: one instance of everything for the whole app. */
@@ -62,12 +63,14 @@ class AppContainer(context: Context) {
     val engine = ExoEngine(context, httpClient)
     val player = PlayerController(engine, playback, clock, appScope, log)
 
+    val updates = UpdateManager(OkHttpClient.Builder().proxy(java.net.Proxy.NO_PROXY).build(), BuildConfig.VERSION_NAME, File(context.cacheDir, "updates"))
+
     private var heartbeat: Job? = null
 
     init {
         appScope.launch { network.available.collect { up -> player.onNetworkChanged(up); log.add(if (up) "Сеть: есть" else "Сеть: нет") } }
         appScope.launch {
-            settings.settings.map { it.quality }.distinctUntilChanged().collect { player.setMaxQuality(it == Quality.MAX) }
+            settings.settings.map { it.quality }.distinctUntilChanged().collect { player.setMaxHeight(it.height) }
         }
     }
 
@@ -75,6 +78,7 @@ class AppContainer(context: Context) {
         heartbeat?.cancel()
         heartbeat = session.startHeartbeat(appScope)
         player.start()
+        updates.start(appScope)
     }
 
     fun onAppStop() {

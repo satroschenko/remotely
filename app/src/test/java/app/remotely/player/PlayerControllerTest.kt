@@ -40,7 +40,7 @@ class FakeEngine : MediaEngine {
     override fun setPaused(paused: Boolean) { playWhenReady = !paused }
     override fun seekTo(positionMs: Long) { this.positionMs = positionMs }
     override fun seekToLive() { liveSeeks++ }
-    override fun setMaxQuality(max: Boolean) = Unit
+    override fun setMaxHeight(height: Int) = Unit
     fun ready() { state = EngineState.READY; l?.onStateChanged(EngineState.READY) }
 }
 

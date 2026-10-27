@@ -97,7 +97,7 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         player.prepare()
     }
 
-    private var maxQuality = false
+    private var maxHeight = 0
     private var preview = false
     private var videoOff = false
     private val main = Handler(Looper.getMainLooper())
@@ -113,8 +113,8 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         }, 300)
     }
 
-    override fun setMaxQuality(max: Boolean) {
-        maxQuality = max
+    override fun setMaxHeight(height: Int) {
+        maxHeight = height
         applyTrackLimits()
     }
 
@@ -127,8 +127,11 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
 
     private fun applyTrackLimits() {
         val b = trackSelector.buildUponParameters()
-        if (preview) b.setMaxVideoSize(1024, 576).setForceHighestSupportedBitrate(false)
-        else b.clearVideoSizeConstraints().setForceHighestSupportedBitrate(maxQuality)
+        when {
+            preview -> b.setMaxVideoSize(1024, minOf(576, maxHeight.takeIf { it > 0 } ?: 576)).setForceHighestSupportedBitrate(false)
+            maxHeight > 0 -> b.setMaxVideoSize(Int.MAX_VALUE, maxHeight).setForceHighestSupportedBitrate(true)
+            else -> b.clearVideoSizeConstraints().setForceHighestSupportedBitrate(false)
+        }
         b.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, videoOff)
         trackSelector.parameters = b.build()
     }

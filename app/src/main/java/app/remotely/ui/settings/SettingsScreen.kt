@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +48,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,15 +63,17 @@ import app.remotely.BuildConfig
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
 import app.remotely.data.session.SessionState
-import app.remotely.data.store.Quality
 import app.remotely.data.store.Settings
+import app.remotely.data.update.InstallResult
+import app.remotely.data.update.Installer
+import app.remotely.data.update.UpdateState
 import app.remotely.ui.common.MessageDialog
 import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
 
-private enum class Page { MAIN, CHANNELS, DIAGNOSTICS }
+private enum class Page { MAIN, CHANNELS, HELP, DIAGNOSTICS }
 
 @UnstableApi
 @Composable
@@ -87,6 +93,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
         when (p) {
             Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
             Page.CHANNELS -> ChannelsPage(c)
+            Page.HELP -> HelpPage()
             Page.DIAGNOSTICS -> DiagnosticsPage(c)
         }
     }
@@ -138,11 +145,69 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         runCatching { first.requestFocus() }
     }
 
+    // Updates: the download starts on demand and the system installer opens once it is done.
+    val update by c.updates.state.collectAsState()
+    var installAsked by remember { mutableStateOf(false) }
+    var installNote by remember { mutableStateOf<String?>(null) }
+    var awaitingPermission by remember { mutableStateOf(false) }
+    fun install(apk: java.io.File) {
+        val r = Installer.install(ctx, apk)
+        awaitingPermission = r == InstallResult.NEEDS_PERMISSION
+        installNote = when (r) {
+            InstallResult.STARTED -> null
+            InstallResult.NEEDS_PERMISSION -> "Разрешите установку и нажмите ещё раз"
+            InstallResult.FAILED -> "Не удалось открыть установщик"
+        }
+    }
+    // Back from the "install unknown apps" switch: carry on if it was turned on.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            val u = c.updates.state.value
+            if (e == Lifecycle.Event.ON_RESUME && awaitingPermission && u is UpdateState.Downloaded && Installer.canInstall(ctx)) install(u.apk)
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    LaunchedEffect(update) {
+        val u = update
+        if (u is UpdateState.Downloaded && installAsked) { installAsked = false; install(u.apk) }
+    }
+    val offer = when (val u = update) {
+        is UpdateState.Available -> u.release
+        is UpdateState.Downloading -> u.release
+        is UpdateState.Downloaded -> u.release
+        is UpdateState.DownloadFailed -> u.release
+        else -> null
+    }
+    val updateHint = when (val u = update) {
+        is UpdateState.Downloading -> "Загрузка ${u.percent}%"
+        is UpdateState.DownloadFailed -> "Не удалось скачать, ещё раз"
+        is UpdateState.Downloaded -> installNote ?: "Установить"
+        else -> installNote ?: "Скачать и установить"
+    }
+    val checkLabel = when (update) {
+        UpdateState.Checking -> "Проверяю…"
+        UpdateState.UpToDate -> "Обновлений нет"
+        UpdateState.CheckFailed -> "Нет связи, ещё раз"
+        UpdateState.Idle -> "Проверить обновления"
+        else -> "Есть новая"
+    }
+    fun onUpdate() {
+        when (val u = update) {
+            is UpdateState.Downloaded -> install(u.apk)
+            is UpdateState.Downloading -> {}
+            else -> { installAsked = true; c.updates.download(c.appScope) }
+        }
+    }
+
     BackHandler(enabled = confirmLogout) { confirmLogout = false }
     PageFrame(dialog = { if (confirmLogout) LogoutDialog(c, onLoggedOut) { confirmLogout = false } }) {
         Title("Настройки")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
+            if (offer != null) item { Item("Обновить до версии ${offer.version}", updateHint) { onUpdate() } }
+            item { Item("Как пользоваться") { open(Page.HELP) } }
             item { Item("Каналы: скрыть, избранное, порядок") { open(Page.CHANNELS) } }
             item {
                 Item("Размер шрифта", s.fontSize.label) {
@@ -150,8 +215,8 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                 }
             }
             item {
-                Item("Качество видео", if (s.quality == Quality.AUTO) "Авто" else "Максимальное") {
-                    scope.launch { c.settings.update { it.copy(quality = if (it.quality == Quality.AUTO) Quality.MAX else Quality.AUTO) } }
+                Item("Качество видео", s.quality.label) {
+                    scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
                 }
             }
             item {
@@ -169,7 +234,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item { Item("Диагностика") { open(Page.DIAGNOSTICS) } }
             item { Item("Аккаунт", login) {} }
             item { Item("Выйти из аккаунта") { confirmLogout = true } }
-            item { Item("Версия", BuildConfig.VERSION_NAME) {} }
+            item { Item("Версия ${BuildConfig.VERSION_NAME}", checkLabel) { c.updates.check(c.appScope) } }
         }
     }
 }
@@ -287,6 +352,75 @@ private fun ChannelsPage(c: AppContainer) {
                 ) {
                     anchor = ch.code
                     if (moving != null) finishMove() else menuFor = ch
+                }
+            }
+        }
+    }
+}
+
+private class HelpSection(val title: String, val rows: List<Pair<String, String>>)
+
+/** Only what a viewer needs: which key does what. */
+private val helpSections = listOf(
+    HelpSection("Просмотр", listOf(
+        "▲ ▼" to "следующий / предыдущий канал",
+        "OK" to "описание передачи, ещё раз — список каналов",
+        "◀" to "список каналов",
+        "▶" to "программа передач",
+        "Назад" to "список каналов, ещё раз — меню",
+    )),
+    HelpSection("Список каналов и меню", listOf(
+        "OK" to "смотреть канал",
+        "Удерживать OK" to "добавить в избранное или убрать",
+        "◀" to "меню: все каналы, избранное, категории, настройки",
+        "Выход" to "Меню → «Выход»",
+    )),
+    HelpSection("Архив", listOf(
+        "Как открыть" to "▶ на канале, выбрать прошедшую передачу с пометкой «Архив», OK",
+        "OK" to "пауза",
+        "◀ ▶" to "перемотка на 30 секунд (удерживать — быстрее)",
+        "▲ ▼" to "перемотка на 5 минут",
+        "Назад" to "вернуться в прямой эфир",
+    )),
+    HelpSection("Телефон и планшет", listOf(
+        "Касание видео" to "как OK",
+        "Свайп вверх / вниз" to "следующий / предыдущий канал, в архиве — 5 минут",
+        "Долгое нажатие" to "на канале — избранное",
+        "Полоса внизу" to "в архиве: нажмите или перетащите — перемотка",
+        "Назад" to "как на пульте",
+    )),
+    HelpSection("Мышь", listOf(
+        "Левая кнопка" to "как OK",
+        "Правая кнопка" to "назад",
+        "Колёсико" to "переключение каналов, в архиве — перемотка",
+    )),
+)
+
+@Composable
+private fun HelpPage() {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    PageFrame {
+        Title("Как пользоваться")
+        // Each section takes the focus in turn, so the remote scrolls the page.
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+            itemsIndexed(helpSections) { i, sec ->
+                Surface(
+                    onClick = {},
+                    modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
+                    colors = FocusStyle.colors(),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                ) {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(sec.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 2.dp))
+                        sec.rows.forEach { (key, what) ->
+                            Row {
+                                Text(key, fontSize = 17.sp, color = Palette.Focus, modifier = Modifier.width(200.dp))
+                                Text(what, fontSize = 17.sp, color = Palette.Text)
+                            }
+                        }
+                    }
                 }
             }
         }

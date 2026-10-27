@@ -10,7 +10,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-enum class Quality { AUTO, MAX }
+/** Video height cap; the steps Zala streams. MAX keeps its name: it is what older versions stored for 1080p. */
+enum class Quality(val height: Int, val label: String) {
+    AUTO(0, "Авто"), MAX(1080, "1080p"), P720(720, "720p"), P576(576, "576p"), P360(360, "360p");
+
+    fun next(): Quality = entries[(ordinal + 1) % entries.size]
+}
 
 @Serializable
 data class Settings(
@@ -22,6 +27,8 @@ data class Settings(
     val fontSize: FontSize = FontSize.LARGE,
     val quality: Quality = Quality.AUTO,
     val autostart: Boolean = false,
+    /** The newest version already announced with a toast: each update is announced once. */
+    val announcedUpdate: String? = null,
 )
 
 interface SettingsSource {

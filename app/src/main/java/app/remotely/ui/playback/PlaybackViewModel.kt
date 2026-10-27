@@ -13,6 +13,7 @@ import app.remotely.data.repo.EpgDay
 import app.remotely.data.repo.EpgLogic
 import app.remotely.data.session.NotLoggedInException
 import app.remotely.data.store.Settings
+import app.remotely.data.update.UpdateState
 import app.remotely.player.ArchiveTimeline
 import app.remotely.player.PlaybackTarget
 import app.remotely.player.PlayerEvent
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -90,6 +92,10 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, ChannelLists(emptyList(), emptyList(), emptyList()))
     val settings: StateFlow<Settings> = c.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
 
+    /** A newer version is out (or on its way): the menu marks «Настройки». */
+    val updatePending: StateFlow<Boolean> = c.updates.state.map { it !is UpdateState.Idle && it !is UpdateState.Checking && it !is UpdateState.UpToDate && it !is UpdateState.CheckFailed }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     private val _ui = MutableStateFlow(PlaybackUi())
     val ui: StateFlow<PlaybackUi> = _ui
 
@@ -114,6 +120,16 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             if (_ui.value.current == null) switchTo(start)
         }
         viewModelScope.launch { player.events.collect(::onPlayerEvent) }
+        // Each new version is announced once, with a short toast after the picture has started.
+        viewModelScope.launch {
+            c.updates.state.collect { s ->
+                if (s !is UpdateState.Available || settings.first().announcedUpdate == s.release.version) return@collect
+                _ui.first { it.current != null }
+                delay(8_000)
+                toast("Доступна версия ${s.release.version}: Меню → Настройки")
+                c.settings.update { it.copy(announcedUpdate = s.release.version) }
+            }
+        }
         viewModelScope.launch {
             while (isActive) {
                 delay(30 * 60_000)

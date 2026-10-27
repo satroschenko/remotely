@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -377,7 +378,8 @@ fun BoxScope.SideMenu(
                 MenuItem("☰ Категории", Modifier.currentIf(onCategories).onFocusChanged { vm.menuFocus = if (it.isFocused) MENU_CATEGORIES else null }, selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
             }
             Spacer(Modifier.weight(1f))
-            MenuItem("⚙ Настройки", onClick = onOpenSettings)
+            val update by vm.updatePending.collectAsState()
+            MenuItem("⚙ Настройки", hint = "есть обновление".takeIf { update }, onClick = onOpenSettings)
             MenuItem("✕ Выход", onClick = onExit)
         }
     }
