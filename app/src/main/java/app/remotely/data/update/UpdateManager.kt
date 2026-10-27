@@ -63,6 +63,7 @@ class UpdateManager(
     private val client: OkHttpClient,
     private val currentVersion: String,
     private val downloadDir: File,
+    private val autoCheck: suspend () -> Boolean,
     private val latestUrl: String = "https://api.github.com/repos/satroschenko/remotely/releases/latest",
 ) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -71,15 +72,15 @@ class UpdateManager(
     private var download: Job? = null
     private var lastCheckMs = 0L
 
-    /** Called on every app start: checks right away unless the last check is fresh, then once a day. */
+    /** Called on every app start and when automatic checks are switched on: checks unless the last check is fresh, then once a day. */
     fun start(scope: CoroutineScope) {
         if (loop?.isActive == true) {
-            if (System.currentTimeMillis() - lastCheckMs > RECHECK_ON_START_MS) check(scope)
+            scope.launch { if (autoCheck() && System.currentTimeMillis() - lastCheckMs > RECHECK_ON_START_MS) check(scope) }
             return
         }
         loop = scope.launch {
             while (isActive) {
-                check(scope)?.join()
+                if (autoCheck()) check(scope)?.join()
                 delay(DAY_MS)
             }
         }

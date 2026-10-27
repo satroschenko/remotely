@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -73,13 +74,16 @@ import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
 
-private enum class Page { MAIN, CHANNELS, HELP, DIAGNOSTICS }
+private enum class Page { MAIN, CHANNELS, HELP, UPDATES, DIAGNOSTICS }
 
 @UnstableApi
 @Composable
 fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit) {
     var page by remember { mutableStateOf(Page.MAIN) }
+    var openedFrom by remember { mutableStateOf<Page?>(null) }
     BackHandler { if (page == Page.MAIN) onBack() else page = Page.MAIN }
+    // On pages without sideways controls ← goes back too, like Back.
+    val leftIsBack = page == Page.HELP || page == Page.UPDATES || page == Page.DIAGNOSTICS
     AnimatedContent(
         targetState = page,
         transitionSpec = {
@@ -88,12 +92,17 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
                 (fadeOut(tween(160)) + slideOutHorizontally(tween(180)) { if (forward) -it / 6 else it / 6 })
         },
         label = "settingsPage",
-        modifier = Modifier.fillMaxSize().background(Palette.Background),
+        modifier = Modifier.fillMaxSize().background(Palette.Background).onPreviewKeyEvent { ev ->
+            if (!leftIsBack || ev.key != Key.DirectionLeft) return@onPreviewKeyEvent false
+            if (ev.type == KeyEventType.KeyDown) page = Page.MAIN
+            true
+        },
     ) { p ->
         when (p) {
-            Page.MAIN -> MainPage(c, onBack, onLoggedOut) { page = it }
+            Page.MAIN -> MainPage(c, onBack, onLoggedOut, returnFrom = openedFrom) { openedFrom = it; page = it }
             Page.CHANNELS -> ChannelsPage(c)
             Page.HELP -> HelpPage()
+            Page.UPDATES -> UpdatesPage(c)
             Page.DIAGNOSTICS -> DiagnosticsPage(c)
         }
     }
@@ -133,82 +142,37 @@ private fun Item(text: String, value: String? = null, modifier: Modifier = Modif
 
 @UnstableApi
 @Composable
-private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit, open: (Page) -> Unit) {
+private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit, returnFrom: Page?, open: (Page) -> Unit) {
     val s by c.settings.settings.collectAsState(Settings())
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var login by remember { mutableStateOf("") }
     var confirmLogout by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
+    // Back from a sub-page the focus returns to the item that opened it.
+    val back = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        runCatching { first.requestFocus() }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 7; else -> null }
+        if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
+        listState.scrollToItem((index - 2).coerceAtLeast(0))
+        withFrameNanos { }
+        if (runCatching { back.requestFocus() }.isFailure) runCatching { first.requestFocus() }
     }
 
-    // Updates: the download starts on demand and the system installer opens once it is done.
     val update by c.updates.state.collectAsState()
-    var installAsked by remember { mutableStateOf(false) }
-    var installNote by remember { mutableStateOf<String?>(null) }
-    var awaitingPermission by remember { mutableStateOf(false) }
-    fun install(apk: java.io.File) {
-        val r = Installer.install(ctx, apk)
-        awaitingPermission = r == InstallResult.NEEDS_PERMISSION
-        installNote = when (r) {
-            InstallResult.STARTED -> null
-            InstallResult.NEEDS_PERMISSION -> "Разрешите установку и нажмите ещё раз"
-            InstallResult.FAILED -> "Не удалось открыть установщик"
-        }
-    }
-    // Back from the "install unknown apps" switch: carry on if it was turned on.
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val obs = LifecycleEventObserver { _, e ->
-            val u = c.updates.state.value
-            if (e == Lifecycle.Event.ON_RESUME && awaitingPermission && u is UpdateState.Downloaded && Installer.canInstall(ctx)) install(u.apk)
-        }
-        lifecycle.addObserver(obs)
-        onDispose { lifecycle.removeObserver(obs) }
-    }
-    LaunchedEffect(update) {
-        val u = update
-        if (u is UpdateState.Downloaded && installAsked) { installAsked = false; install(u.apk) }
-    }
-    val offer = when (val u = update) {
-        is UpdateState.Available -> u.release
-        is UpdateState.Downloading -> u.release
-        is UpdateState.Downloaded -> u.release
-        is UpdateState.DownloadFailed -> u.release
-        else -> null
-    }
-    val updateHint = when (val u = update) {
-        is UpdateState.Downloading -> "Загрузка ${u.percent}%"
-        is UpdateState.DownloadFailed -> "Не удалось скачать, ещё раз"
-        is UpdateState.Downloaded -> installNote ?: "Установить"
-        else -> installNote ?: "Скачать и установить"
-    }
-    val checkLabel = when (update) {
-        UpdateState.Checking -> "Проверяю…"
-        UpdateState.UpToDate -> "Обновлений нет"
-        UpdateState.CheckFailed -> "Нет связи, ещё раз"
-        UpdateState.Idle -> "Проверить обновления"
-        else -> "Есть новая"
-    }
-    fun onUpdate() {
-        when (val u = update) {
-            is UpdateState.Downloaded -> install(u.apk)
-            is UpdateState.Downloading -> {}
-            else -> { installAsked = true; c.updates.download(c.appScope) }
-        }
-    }
+    val newVersion = (update as? UpdateState.Available)?.release?.version
 
     BackHandler(enabled = confirmLogout) { confirmLogout = false }
     PageFrame(dialog = { if (confirmLogout) LogoutDialog(c, onLoggedOut) { confirmLogout = false } }) {
         Title("Настройки")
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
-            if (offer != null) item { Item("Обновить до версии ${offer.version}", updateHint) { onUpdate() } }
-            item { Item("Как пользоваться") { open(Page.HELP) } }
-            item { Item("Каналы: скрыть, избранное, порядок") { open(Page.CHANNELS) } }
+            item { Item("Как пользоваться", modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
+            item { Item("Обновления", newVersion?.let { "есть версия $it" } ?: "версия ${BuildConfig.VERSION_NAME}", Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
+            item { Item("Каналы: скрыть, избранное, порядок", modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
             item {
                 Item("Размер шрифта", s.fontSize.label) {
                     scope.launch { c.settings.update { it.copy(fontSize = it.fontSize.next()) } }
@@ -231,10 +195,9 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                     }
                 }
             }
-            item { Item("Диагностика") { open(Page.DIAGNOSTICS) } }
+            item { Item("Диагностика", modifier = Modifier.returnHere(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
             item { Item("Аккаунт", login) {} }
             item { Item("Выйти из аккаунта") { confirmLogout = true } }
-            item { Item("Версия ${BuildConfig.VERSION_NAME}", checkLabel) { c.updates.check(c.appScope) } }
         }
     }
 }
@@ -353,6 +316,102 @@ private fun ChannelsPage(c: AppContainer) {
                     anchor = ch.code
                     if (moving != null) finishMove() else menuFor = ch
                 }
+            }
+        }
+    }
+}
+
+@UnstableApi
+@Composable
+private fun UpdatesPage(c: AppContainer) {
+    val s by c.settings.settings.collectAsState(Settings())
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val update by c.updates.state.collectAsState()
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+
+    // Updates: the download starts on demand and the system installer opens once it is done.
+    var installAsked by remember { mutableStateOf(false) }
+    var installNote by remember { mutableStateOf<String?>(null) }
+    var awaitingPermission by remember { mutableStateOf(false) }
+    fun install(apk: java.io.File) {
+        val r = Installer.install(ctx, apk)
+        awaitingPermission = r == InstallResult.NEEDS_PERMISSION
+        installNote = when (r) {
+            InstallResult.STARTED -> null
+            InstallResult.NEEDS_PERMISSION -> "Разрешите установку и нажмите ещё раз"
+            InstallResult.FAILED -> "Не удалось открыть установщик"
+        }
+    }
+    // Back from the "install unknown apps" switch: carry on if it was turned on.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            val u = c.updates.state.value
+            if (e == Lifecycle.Event.ON_RESUME && awaitingPermission && u is UpdateState.Downloaded && Installer.canInstall(ctx)) install(u.apk)
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    LaunchedEffect(update) {
+        val u = update
+        if (u is UpdateState.Downloaded && installAsked) { installAsked = false; install(u.apk) }
+    }
+    val offer = when (val u = update) {
+        is UpdateState.Available -> u.release
+        is UpdateState.Downloading -> u.release
+        is UpdateState.Downloaded -> u.release
+        is UpdateState.DownloadFailed -> u.release
+        else -> null
+    }
+    val updateHint = when (val u = update) {
+        is UpdateState.Downloading -> "Загрузка ${u.percent}%"
+        is UpdateState.DownloadFailed -> "Не удалось скачать, ещё раз"
+        is UpdateState.Downloaded -> installNote ?: "Установить"
+        else -> installNote ?: "Скачать и установить"
+    }
+    val checkLabel = when (update) {
+        UpdateState.Checking -> "Проверяю…"
+        UpdateState.UpToDate -> "Обновлений нет"
+        UpdateState.CheckFailed -> "Нет связи, ещё раз"
+        UpdateState.Idle -> null
+        else -> "Есть новая версия"
+    }
+    fun onUpdate() {
+        when (val u = update) {
+            is UpdateState.Downloaded -> install(u.apk)
+            is UpdateState.Downloading -> {}
+            else -> { installAsked = true; c.updates.download(c.appScope) }
+        }
+    }
+
+    PageFrame {
+        Title("Обновления")
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+            item(key = "installed") { Item("Установлена версия", BuildConfig.VERSION_NAME) {} }
+            if (offer != null) item(key = "update") { Item("Обновить до версии ${offer.version}", updateHint, Modifier.focusRequester(first)) { onUpdate() } }
+            item(key = "check") {
+                Item("Проверить сейчас", checkLabel, if (offer == null) Modifier.focusRequester(first) else Modifier) {
+                    // A version found by hand needs no toast later.
+                    scope.launch { c.updates.check(c.appScope)?.join(); (c.updates.state.value as? UpdateState.Available)?.let { a -> c.settings.update { it.copy(announcedUpdate = a.release.version) } } }
+                }
+            }
+            item(key = "auto") {
+                Item("Проверять автоматически", if (s.autoCheckUpdates) "Да" else "Нет") {
+                    val on = !s.autoCheckUpdates
+                    scope.launch {
+                        c.settings.update { it.copy(autoCheckUpdates = on) }
+                        if (on) c.updates.start(c.appScope)
+                    }
+                }
+            }
+            item(key = "note") {
+                Text(
+                    if (s.autoCheckUpdates) "Приложение проверяет новую версию при запуске и раз в сутки и коротко сообщает о ней. Устанавливается обновление только после вашего подтверждения."
+                    else "Автоматическая проверка выключена: о новой версии приложение не сообщает. Проверить можно кнопкой «Проверить сейчас».",
+                    fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
             }
         }
     }

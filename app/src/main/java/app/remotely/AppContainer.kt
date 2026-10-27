@@ -23,6 +23,7 @@ import app.remotely.player.PlayerController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -63,7 +64,7 @@ class AppContainer(context: Context) {
     val engine = ExoEngine(context, httpClient)
     val player = PlayerController(engine, playback, clock, appScope, log)
 
-    val updates = UpdateManager(OkHttpClient.Builder().proxy(java.net.Proxy.NO_PROXY).build(), BuildConfig.VERSION_NAME, File(context.cacheDir, "updates"))
+    val updates = UpdateManager(OkHttpClient.Builder().proxy(java.net.Proxy.NO_PROXY).build(), BuildConfig.VERSION_NAME, File(context.cacheDir, "updates"), autoCheck = { settings.settings.first().autoCheckUpdates })
 
     private var heartbeat: Job? = null
 
