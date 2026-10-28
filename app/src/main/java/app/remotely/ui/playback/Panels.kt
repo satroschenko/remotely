@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,10 +45,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -338,6 +342,7 @@ private fun ChannelRow(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @UnstableApi
 @Composable
 fun BoxScope.SideMenu(
@@ -353,13 +358,17 @@ fun BoxScope.SideMenu(
     fun Modifier.currentIf(yes: Boolean) = if (yes) focusRequester(current) else this
     // The main page wraps around like the channel list: ▲ on the top item reaches «Выход», ▼ on «Выход» the top.
     val top = remember { FocusRequester() }
-    val exit = remember { FocusRequester() }
+    val exitItem = remember { FocusRequester() }
     fun Modifier.wrapTo(key: Key, target: FocusRequester) = onPreviewKeyEvent { ev ->
         if (ev.key != key) false
         else { if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) runCatching { target.requestFocus() }; true }
     }
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid)
+            // The channel list lies under the menu: without this ▲ ▼ can land on a hidden row between the items.
+            // Only the arrows are held back: ▶ hands the focus to the list.
+            .focusProperties { exit = { if (it == FocusDirection.Up || it == FocusDirection.Down) FocusRequester.Cancel else FocusRequester.Default } }
+            .focusGroup()
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -380,7 +389,7 @@ fun BoxScope.SideMenu(
         } else {
             Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
-            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exit), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
+            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exitItem), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
             MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
                 if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
             }
@@ -391,7 +400,7 @@ fun BoxScope.SideMenu(
             Spacer(Modifier.weight(1f))
             val update by vm.updatePending.collectAsState()
             MenuItem("⚙ Настройки", hint = "есть обновление".takeIf { update }, onClick = onOpenSettings)
-            MenuItem("✕ Выход", Modifier.focusRequester(exit).wrapTo(Key.DirectionDown, top), onClick = onExit)
+            MenuItem("✕ Выход", Modifier.focusRequester(exitItem).wrapTo(Key.DirectionDown, top), onClick = onExit)
         }
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
