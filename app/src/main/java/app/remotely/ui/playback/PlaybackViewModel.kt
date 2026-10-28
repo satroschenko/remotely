@@ -215,12 +215,14 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private var lastStepMs = 0L
 
     /**
-     * ↑/↓ in fullscreen. The banner follows every press at once, the stream starts only when the
-     * presses stop: fast zapping does not open a stream per channel and does not stall the UI.
+     * ↑/↓ in fullscreen. The banner follows every press at once. A single press opens the stream at
+     * once too; while presses follow each other the stream waits until they stop, so fast zapping
+     * does not open a stream per channel and does not stall the UI.
      */
     fun stepChannel(delta: Int, isRepeat: Boolean = false) {
         val now = c.clock.nowMs()
         if (isRepeat && now - lastStepMs < ZAP_REPEAT_MS) return
+        val burst = isRepeat || now - lastStepMs < ZAP_BURST_MS
         lastStepMs = now
         val list = activeList()
         if (list.isEmpty()) return
@@ -230,7 +232,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         showBanner()
         zapJob?.cancel()
         zapJob = viewModelScope.launch {
-            delay(ZAP_SETTLE_MS)
+            if (burst) delay(ZAP_SETTLE_MS)
             switchTo(next)
         }
     }
@@ -613,6 +615,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private companion object {
         const val ZAP_SETTLE_MS = 300L
         const val ZAP_REPEAT_MS = 250L
+        /** A press this soon after the previous one is zapping through: the stream waits for the presses to stop. */
+        const val ZAP_BURST_MS = 600L
         const val BANNER_MS = 5_000L
         const val DETAILED_BANNER_MS = 10_000L
         /** A recording this much shorter than its programme was cut by the server. */

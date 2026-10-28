@@ -208,7 +208,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             enter = Motion.fromBottom, exit = Motion.toBottom,
         ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
 
-        StatusPill(ps.phase, overPreview = withPanel)
+        StatusPill(ps.phase, ps.target, overPreview = withPanel)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
 
         val dialog: DialogSpec? = when (val d = ui.dialog) {

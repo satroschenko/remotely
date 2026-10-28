@@ -727,10 +727,19 @@ private fun formatDelta(ms: Long): String {
     }
 }
 
+private const val SLOW_CONNECT_MS = 3_000L
+
+/** [target]: the stream being opened; a new channel starts the wait over. */
 @Composable
-fun BoxScope.StatusPill(phase: Phase, overPreview: Boolean) {
+fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean) {
+    // A normal channel switch shows only the banner; «Подключение…» only when it takes long.
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(phase, target) {
+        slow = false
+        if (phase == Phase.CONNECTING) { delay(SLOW_CONNECT_MS); slow = true }
+    }
     val text = when (phase) {
-        Phase.CONNECTING -> "Подключение…"
+        Phase.CONNECTING -> "Подключение…".takeIf { slow }
         Phase.RECONNECTING -> "Восстанавливаем показ…"
         Phase.NO_NETWORK -> "Нет интернета, ждём…"
         else -> null

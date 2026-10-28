@@ -12,6 +12,7 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -39,6 +40,16 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setTrackSelector(trackSelector)
+        // The picture starts after 1 s of video instead of the default 2.5 s: zapping feels like a TV.
+        // After a stall the default (5 s) stays, so a slow connection does not stutter over and over.
+        .setLoadControl(
+            DefaultLoadControl.Builder().setBufferDurationsMs(
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                START_BUFFER_MS,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+            ).build(),
+        )
         .setMediaSourceFactory(
             DashMediaSource.Factory(OkHttpDataSource.Factory(httpClient)).setLoadErrorHandlingPolicy(loadErrors),
         )
@@ -163,3 +174,6 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
             return counters.renderedOutputBufferCount.toLong()
         }
 }
+
+/** Video buffered before the picture starts. */
+private const val START_BUFFER_MS = 1_000

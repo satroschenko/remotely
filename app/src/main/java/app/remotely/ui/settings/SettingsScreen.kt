@@ -174,7 +174,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         Title("Настройки")
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
-            item { Item("Как пользоваться", modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
+            item { Item("Как пользоваться / наш сайт", modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
             item { Item("Обновления", newVersion?.let { "есть версия $it" } ?: "версия ${BuildConfig.VERSION_NAME}", Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
             item { Item("Каналы: скрыть, избранное, порядок", modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
             item {
@@ -476,7 +476,7 @@ private fun HelpPage() {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     PageFrame {
-        Title("Как пользоваться")
+        Title("Как пользоваться / наш сайт")
         // Each section takes the focus in turn, so the remote scrolls the page.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             itemsIndexed(helpSections) { i, sec ->
@@ -503,12 +503,24 @@ private fun HelpPage() {
     }
 }
 
-/** Authorship and where to write: a link can't be clicked on a TV, so a QR code for the phone camera. */
+/** Authorship and where to write. OK or a tap opens the page; a TV without a browser has the QR code for the phone camera. */
+private const val PROJECT_URL = "https://github.com/satroschenko/remotely"
+private const val TV_BROWSER_STUB = "com.android.tv.frameworkpackagestubs"
+
 @Composable
 private fun AboutCard() {
+    val ctx = LocalContext.current
+    var noBrowser by remember { mutableStateOf(false) }
+    val open = {
+        // Without a browser Android shows only its own English "no app" note: ask first.
+        val view = Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Android TV answers links with a stub that only says "no app": it does not count as a browser.
+        val browsers = ctx.packageManager.queryIntentActivities(view, 0).filter { it.activityInfo.packageName != TV_BROWSER_STUB }
+        noBrowser = browsers.isEmpty() || runCatching { ctx.startActivity(view) }.isFailure
+    }
     Surface(
-        onClick = {},
-        modifier = Modifier.fillMaxWidth(),
+        onClick = open,
+        modifier = Modifier.fillMaxWidth().pointerClick(onClick = open),
         colors = FocusStyle.colors(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
@@ -520,7 +532,10 @@ private fun AboutCard() {
                 Text("Автор: satroschenko", fontSize = 17.sp, color = Palette.Text)
                 Text("Сайт проекта, вопросы и пожелания:", fontSize = 17.sp, color = Palette.Text)
                 Text("github.com/satroschenko/remotely", fontSize = 17.sp, color = Palette.Focus)
-                Text("Наведите камеру телефона на код справа.", fontSize = 15.sp, color = Palette.TextDim)
+                Text(
+                    if (noBrowser) "Браузера нет — наведите камеру телефона на код справа." else "Нажмите, чтобы открыть, или наведите камеру телефона на код справа.",
+                    fontSize = 15.sp, color = if (noBrowser) Palette.Focus else Palette.TextDim,
+                )
             }
             Spacer(Modifier.width(20.dp))
             Image(painterResource(R.drawable.qr_github), "QR-код ссылки на проект", Modifier.size(132.dp))
