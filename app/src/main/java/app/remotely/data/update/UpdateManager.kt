@@ -14,12 +14,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
-data class Release(val version: String, val apkUrl: String)
+/** [notes]: the short «what's new» list from the release description. */
+data class Release(val version: String, val apkUrl: String, val notes: List<String> = emptyList())
 
 sealed interface UpdateState {
     data object Idle : UpdateState
@@ -54,8 +56,15 @@ object Versions {
         val apk = o["assets"]!!.jsonArray.map { it.jsonObject }
             .firstOrNull { it["name"]?.jsonPrimitive?.content == "Remotely.apk" }
             ?.get("browser_download_url")?.jsonPrimitive?.content ?: return null
-        Release(tag.removePrefix("v"), apk)
+        Release(tag.removePrefix("v"), apk, notes(o["body"]?.jsonPrimitive?.contentOrNull.orEmpty()))
     }.getOrNull()
+
+    /** The bullet points of the release description without Markdown; without bullets, its first lines. */
+    fun notes(body: String, max: Int = 5): List<String> {
+        val lines = body.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        val bullets = lines.filter { it.startsWith("- ") || it.startsWith("* ") }.map { it.drop(2) }
+        return (bullets.ifEmpty { lines.take(3) }).take(max).map { it.replace("**", "").replace("`", "").trim() }
+    }
 }
 
 /** Asks GitHub for the latest release: on start, once a day and on demand. Never installs on its own. */

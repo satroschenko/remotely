@@ -27,6 +27,15 @@ class VersionsTest {
         assertNull(Versions.parseRelease("not json"))
     }
 
+    @Test fun notesAreTheBulletsWithoutMarkdown() {
+        val body = "## v1.17\r\n- Меню **по кругу**\r\n* Фокус на `Выйти`\r\n\r\nС этой версии ..."
+        assertEquals(listOf("Меню по кругу", "Фокус на Выйти"), Versions.notes(body))
+        assertEquals(listOf("Одна строка"), Versions.notes("Одна строка\n"))
+        assertEquals(5, Versions.notes((1..9).joinToString("\n") { "- $it" }).size)
+        val json = """{"tag_name":"v1.17","body":"- Новое","assets":[{"name":"Remotely.apk","browser_download_url":"https://x/Remotely.apk"}]}"""
+        assertEquals(listOf("Новое"), Versions.parseRelease(json)!!.notes)
+    }
+
     @Test fun qualityCyclesThroughZalaSteps() {
         assertEquals(listOf(0, 1080, 720, 576, 360), Quality.entries.map { it.height })
         assertEquals(Quality.AUTO, Quality.P360.next())

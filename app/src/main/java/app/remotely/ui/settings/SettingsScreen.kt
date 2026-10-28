@@ -395,6 +395,18 @@ private fun UpdatesPage(c: AppContainer) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "installed") { Item("Установлена версия", BuildConfig.VERSION_NAME) {} }
             if (offer != null) item(key = "update") { Item("Обновить до версии ${offer.version}", updateHint, Modifier.focusRequester(first)) { onUpdate() } }
+            if (offer != null && offer.notes.isNotEmpty()) item(key = "notes") {
+                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Что нового в ${offer.version}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+                    offer.notes.forEach {
+                        // Wrapped lines line up with the text, not with the bullet.
+                        Row {
+                            Text("•", fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.width(18.dp))
+                            Text(it, fontSize = 16.sp, color = Palette.TextDim)
+                        }
+                    }
+                }
+            }
             item(key = "check") {
                 Item("Проверить сейчас", checkLabel, if (offer == null) Modifier.focusRequester(first) else Modifier) {
                     // A version found by hand needs no toast later.
