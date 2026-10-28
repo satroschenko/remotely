@@ -158,7 +158,12 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             .focusRequester(rootFocus)
             .focusable(),
     ) {
-        VideoSurface(c.engine.player, preview = withPanel)
+        // Browsing the list: the old channel's picture and sound go at once, the new picture shows when it plays.
+        val shown = ps.target?.channel?.code
+        val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
+        val hideVideo = oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING)
+        LaunchedEffect(oldChannel) { c.engine.player.volume = if (oldChannel) 0f else 1f }
+        VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
         // A click or tap on the video does what OK does; a vertical swipe does what Up/Down do.
         if (fullscreenKeys) {
@@ -267,8 +272,9 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
 
 /** Fullscreen ↔ preview by animating a graphics layer: no relayout, no SurfaceView resize jank. */
 @Composable
-private fun VideoSurface(exo: Player, preview: Boolean) {
+private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
     val t by animateFloatAsState(if (preview) 1f else 0f, tween(220, easing = FastOutSlowInEasing), label = "video")
+    val alpha by animateFloatAsState(if (hidden) 0f else 1f, tween(if (hidden) 80 else 200), label = "videoAlpha")
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fullW = maxWidth
@@ -292,6 +298,7 @@ private fun VideoSurface(exo: Player, preview: Boolean) {
                     translationY = ty
                     shape = RoundedCornerShape((10f * t / scale.coerceAtLeast(0.01f)).dp)
                     clip = t > 0f
+                    this.alpha = alpha
                 },
         )
     }

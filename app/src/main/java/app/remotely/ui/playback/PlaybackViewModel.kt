@@ -299,7 +299,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         loadUpcoming(ch)
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
-            delay(1_000)
+            delay(PREVIEW_SETTLE_MS)
             val t = player.state.value.target
             if (_ui.value.overlay == Overlay.LIST && (t !is PlaybackTarget.Live || t.channel.code != ch.code)) {
                 player.play(PlaybackTarget.Live(ch))
@@ -615,6 +615,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private companion object {
         const val ZAP_SETTLE_MS = 300L
         const val ZAP_REPEAT_MS = 250L
+        /** The list opens the focused channel once the cursor rests this long. */
+        const val PREVIEW_SETTLE_MS = 600L
         /** A press this soon after the previous one is zapping through: the stream waits for the presses to stop. */
         const val ZAP_BURST_MS = 600L
         const val BANNER_MS = 5_000L
