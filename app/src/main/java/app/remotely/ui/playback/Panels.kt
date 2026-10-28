@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import app.remotely.ui.common.AnimatedNullable
 import app.remotely.ui.common.Motion
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -52,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.Placeable
@@ -299,11 +302,12 @@ private fun ChannelRow(
     onLongClick: () -> Unit,
     enabled: Boolean,
 ) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() }
+        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .then(if (enabled) Modifier.pointerClick(onLongClick, onClick) else Modifier),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = FocusStyle.colors(),
@@ -324,7 +328,7 @@ private fun ChannelRow(
                     if (favorite) Text("  ★", fontSize = 20.sp, color = Palette.Focus)
                 }
                 val known = ch.nowTitle.isNotBlank() && now < ch.nowEndMs
-                Text(if (known) ch.nowTitle else "—", fontSize = 16.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                ScrollingLine(if (known) ch.nowTitle else "—", focused, fontSize = 16.sp, color = Palette.TextDim)
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.height(6.dp).fillMaxWidth(0.8f)) {
                     if (known) ProgressBar(EpgLogic.progress(ch.nowStartMs, ch.nowEndMs, now), Modifier.fillMaxWidth())
@@ -347,6 +351,13 @@ fun BoxScope.SideMenu(
     var fromGroups by remember { mutableStateOf(false) }
     LaunchedEffect(groupsOpen) { if (groupsOpen) fromGroups = true }
     fun Modifier.currentIf(yes: Boolean) = if (yes) focusRequester(current) else this
+    // The main page wraps around like the channel list: ▲ on the top item reaches «Выход», ▼ on «Выход» the top.
+    val top = remember { FocusRequester() }
+    val exit = remember { FocusRequester() }
+    fun Modifier.wrapTo(key: Key, target: FocusRequester) = onPreviewKeyEvent { ev ->
+        if (ev.key != key) false
+        else { if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) runCatching { target.requestFocus() }; true }
+    }
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().width(300.dp).clip(PanelShape).background(Palette.PanelSolid)
             .padding(horizontal = 24.dp, vertical = 20.dp),
@@ -369,7 +380,7 @@ fun BoxScope.SideMenu(
         } else {
             Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
-            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
+            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exit), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
             MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
                 if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
             }
@@ -380,7 +391,7 @@ fun BoxScope.SideMenu(
             Spacer(Modifier.weight(1f))
             val update by vm.updatePending.collectAsState()
             MenuItem("⚙ Настройки", hint = "есть обновление".takeIf { update }, onClick = onOpenSettings)
-            MenuItem("✕ Выход", onClick = onExit)
+            MenuItem("✕ Выход", Modifier.focusRequester(exit).wrapTo(Key.DirectionDown, top), onClick = onExit)
         }
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
@@ -564,11 +575,11 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     }
     // Description of the focused programme under the preview.
     e.focused?.let { p ->
-        Column(Modifier.align(Alignment.TopEnd).padding(top = InfoTop, end = PreviewEnd).width(PreviewWidth), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(top = InfoTop, end = PreviewEnd).width(PreviewWidth), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${ZalaTime.hhmm(p.startMs)}–${ZalaTime.hhmm(p.endMs)}", fontSize = 16.sp, color = Palette.Accent)
             Text(p.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (p.genre.isNotBlank()) Text(p.genre, fontSize = 15.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (p.description.isNotBlank()) Text(p.description, fontSize = 15.sp, color = Palette.TextDim, maxLines = 7, overflow = TextOverflow.Ellipsis)
+            if (p.description.isNotBlank()) AutoScrollText(p.description, Modifier.weight(1f, fill = false).padding(bottom = 16.dp))
         }
     }
     LaunchedEffect(e.items) {
@@ -583,9 +594,10 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
 private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit) {
     val onAir = now >= p.startMs && now < p.endMs
     val past = p.endMs <= now
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() }.pointerClick(onClick = onClick),
+        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }.pointerClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = FocusStyle.colors(if (onAir) Color(0xFF243B55) else Palette.Row),
         border = FocusStyle.border(),
@@ -594,7 +606,7 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(ZalaTime.hhmm(p.startMs), fontSize = 20.sp, color = if (past) Palette.TextDim else Palette.Text, modifier = Modifier.width(68.dp))
             Column(Modifier.weight(1f)) {
-                Text(p.title, fontSize = 20.sp, color = if (past && !recordable) Palette.TextDim else Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                ScrollingLine(p.title, focused, fontSize = 20.sp, color = if (past && !recordable) Palette.TextDim else Palette.Text)
                 if (onAir) ProgressBar(EpgLogic.progress(p.startMs, p.endMs, now), Modifier.fillMaxWidth(0.7f).padding(top = 6.dp))
             }
             when {
@@ -646,11 +658,11 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
     val shownWall = a.seekTargetMs ?: (p.startMs + a.positionMs)
     // Always-visible mark so recordings are never confused with live TV; shows the moment being watched.
     Row(
-        Modifier.align(Alignment.TopStart).padding(20.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 14.dp, vertical = 6.dp),
+        Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(bottomEnd = 8.dp)).background(Color(0x80000000)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("● АРХИВ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
-        Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 18.sp, color = Palette.Text)
+        Text("● АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
+        Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 14.sp, color = Palette.Text)
     }
     AnimatedVisibility(
         visible = a.controlsVisible || paused,
@@ -737,4 +749,31 @@ fun Toast(text: String) {
         color = Palette.Text,
         modifier = Modifier.padding(top = 24.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xEE1B2533)).padding(horizontal = 32.dp, vertical = 16.dp),
     )
+}
+
+/** One line; under the cursor a title too long for the row scrolls after a short pause. */
+@Composable
+fun ScrollingLine(text: String, scrolling: Boolean, fontSize: TextUnit, color: Color) {
+    Text(
+        text, fontSize = fontSize, color = color, maxLines = 1,
+        overflow = if (scrolling) TextOverflow.Clip else TextOverflow.Ellipsis,
+        modifier = if (scrolling) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1200, repeatDelayMillis = 2000) else Modifier,
+    )
+}
+
+/** Programme description: when it doesn't fit, it slowly scrolls down, rests at the end and starts over. */
+@Composable
+private fun AutoScrollText(text: String, modifier: Modifier) {
+    val scroll = rememberScrollState()
+    LaunchedEffect(text) {
+        scroll.scrollTo(0)
+        while (true) {
+            delay(4000)
+            if (scroll.maxValue == 0) continue
+            scroll.animateScrollTo(scroll.maxValue, tween(durationMillis = scroll.maxValue * 40, easing = LinearEasing))
+            delay(4000)
+            scroll.animateScrollTo(0, tween(600))
+        }
+    }
+    Text(text, fontSize = 15.sp, color = Palette.TextDim, modifier = modifier.verticalScroll(scroll, enabled = false))
 }

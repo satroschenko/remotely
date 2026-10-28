@@ -226,7 +226,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             )
             Dialog.ExitApp -> DialogSpec(
                 "Выйти из приложения?", null,
-                listOf("Отмена" to vm::dismissDialog, "Выйти" to { activity?.finish() }),
+                // «Выйти» first: it takes the focus, the menu item was already a deliberate choice.
+                listOf("Выйти" to { activity?.finish() }, "Отмена" to vm::dismissDialog),
             )
             null -> when {
                 ui.channelsFailed -> DialogSpec("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))

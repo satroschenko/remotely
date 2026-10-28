@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,6 +51,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -61,6 +64,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import app.remotely.AppContainer
 import app.remotely.BuildConfig
+import app.remotely.R
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
 import app.remotely.data.session.SessionState
@@ -482,6 +486,32 @@ private fun HelpPage() {
                     }
                 }
             }
+            item(key = "about") { AboutCard() }
+        }
+    }
+}
+
+/** Authorship and where to write: a link can't be clicked on a TV, so a QR code for the phone camera. */
+@Composable
+private fun AboutCard() {
+    Surface(
+        onClick = {},
+        modifier = Modifier.fillMaxWidth(),
+        colors = FocusStyle.colors(),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+    ) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("О приложении", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 2.dp))
+                Text("Remotely ${BuildConfig.VERSION_NAME} — бесплатное приложение с открытым кодом.", fontSize = 17.sp, color = Palette.Text)
+                Text("Автор: satroschenko", fontSize = 17.sp, color = Palette.Text)
+                Text("Сайт проекта, вопросы и пожелания:", fontSize = 17.sp, color = Palette.Text)
+                Text("github.com/satroschenko/remotely", fontSize = 17.sp, color = Palette.Focus)
+                Text("Наведите камеру телефона на код справа.", fontSize = 15.sp, color = Palette.TextDim)
+            }
+            Spacer(Modifier.width(20.dp))
+            Image(painterResource(R.drawable.qr_github), "QR-код ссылки на проект", Modifier.size(132.dp))
         }
     }
 }
