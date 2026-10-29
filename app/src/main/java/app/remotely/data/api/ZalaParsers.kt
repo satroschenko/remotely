@@ -165,6 +165,29 @@ object ZalaParsers {
         return (max ?: 172_800L) * 1000
     }
 
+    /** sdk_queryblackout: `[["channelcode|id", "030000|205959,..."], ...]` → channel code → its daily breaks (UTC). */
+    fun blackouts(body: String): Map<String, List<BlackoutWindow>> {
+        val o = json(body)
+        requireOk(o)
+        val data = o["data"] as? JsonArray ?: return emptyMap()
+        val out = mutableMapOf<String, List<BlackoutWindow>>()
+        for (row in data) {
+            val cells = (row as? JsonArray)?.map { (it as? JsonPrimitive)?.content.orEmpty() } ?: continue
+            val code = cells.getOrNull(0)?.substringBefore('|')?.takeIf { it.isNotBlank() } ?: continue
+            val windows = cells.getOrNull(1).orEmpty().split(',').mapNotNull { w ->
+                val (b, e) = w.trim().split('|').takeIf { it.size == 2 } ?: return@mapNotNull null
+                BlackoutWindow(hhmmssToSec(b) ?: return@mapNotNull null, hhmmssToSec(e) ?: return@mapNotNull null)
+            }
+            if (windows.isNotEmpty()) out[code] = out[code].orEmpty() + windows
+        }
+        return out
+    }
+
+    private fun hhmmssToSec(t: String): Int? {
+        if (t.length != 6 || !t.all { it.isDigit() }) return null
+        return t.substring(0, 2).toInt() * 3600 + t.substring(2, 4).toInt() * 60 + t.substring(4, 6).toInt()
+    }
+
     fun liveUrl(body: String): String {
         val o = json(body)
         requireOk(o)

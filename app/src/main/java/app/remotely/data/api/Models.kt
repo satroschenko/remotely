@@ -20,6 +20,10 @@ data class Channel(
 )
 
 /** Portal channel category ("column" under 08), e.g. «Кино», «Спорт». */
+/** A daily break in a channel's broadcast set by Zala, in UTC seconds of the day; [endSec] is its last second. */
+@Serializable
+data class BlackoutWindow(val beginSec: Int, val endSec: Int)
+
 data class ChannelColumn(val code: String, val name: String, val sortNum: Int)
 
 @Serializable

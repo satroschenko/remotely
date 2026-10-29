@@ -161,6 +161,11 @@ class ZalaApi(
             .addQueryParameter("columncode", "08").build()),
     )
 
+    /** Daily breaks of channels (the official client shows a picture instead of the stream then). */
+    suspend fun blackouts(s: Session): Map<String, List<BlackoutWindow>> = ZalaParsers.blackouts(
+        get("${s.epgBase}/iptvepg/frame1258/sdk_queryblackout.jsp".toHttpUrl().newBuilder()
+            .addQueryParameter("querytype", "2").addQueryParameter("querycode", "0").build()))
+
     suspend fun subscribedNumbers(s: Session): Set<Int> =
         ZalaParsers.subscribedNumbers(get("${s.frameBase}/action/sdk_getsubscribechannel.jsp".toHttpUrl()))
 

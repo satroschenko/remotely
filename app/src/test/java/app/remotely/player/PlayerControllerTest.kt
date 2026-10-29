@@ -73,6 +73,38 @@ class PlayerControllerTest {
         return Triple(c, engine, streams)
     }
 
+    @Test fun breakInBroadcastShowsNoStreamAndOpensWhenOver() = runTest {
+        val engine = FakeEngine()
+        val clock = Clock { testScheduler.currentTime }
+        var until: Long? = 60_000
+        val c = PlayerController(engine, FakeStreams(), clock, backgroundScope, EventLog(clock), blackoutUntil = { until })
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        assertTrue(engine.opened.isEmpty())
+        assertEquals(Phase.BLACKOUT, c.state.value.phase)
+        assertEquals(60_000L, c.state.value.blackoutUntilMs)
+        until = null
+        advanceTimeBy(61_001)
+        runCurrent()
+        assertEquals(1, engine.opened.size)
+        assertEquals(Phase.CONNECTING, c.state.value.phase)
+    }
+
+    @Test fun breakStartingWhileWatchingStopsTheStream() = runTest {
+        val engine = FakeEngine()
+        val clock = Clock { testScheduler.currentTime }
+        var until: Long? = null
+        val c = PlayerController(engine, FakeStreams(), clock, backgroundScope, EventLog(clock), blackoutUntil = { until })
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        engine.ready()
+        until = 3600_000
+        assertTrue(c.recheckBlackout())
+        assertEquals(Phase.BLACKOUT, c.state.value.phase)
+        assertTrue(engine.stops > 0)
+        assertEquals(false, c.recheckBlackout())
+    }
+
     @Test fun playsAndBecomesPlaying() = runTest {
         val (c, e, _) = setup()
         c.play(PlaybackTarget.Live(ch))

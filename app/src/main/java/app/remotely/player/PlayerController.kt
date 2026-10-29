@@ -2,6 +2,7 @@ package app.remotely.player
 
 import app.remotely.core.Clock
 import app.remotely.core.EventLog
+import app.remotely.core.ZalaTime
 import app.remotely.core.RetryDecision
 import app.remotely.core.RetryPolicy
 import app.remotely.data.api.ArchiveUnavailableException
@@ -59,13 +60,15 @@ sealed interface PlaybackTarget {
 /** What the server answered 404 for: the whole recording (manifest) or one piece of it. */
 enum class NotFound { MANIFEST, SEGMENT }
 
-enum class Phase { IDLE, CONNECTING, PLAYING, RECONNECTING, NO_NETWORK, NEEDS_USER_RETRY, BAD_CREDENTIALS, NOT_LOGGED_IN }
+/** [BLACKOUT]: Zala's break in the channel's broadcast, the stream is not shown until [PlayerState.blackoutUntilMs]. */
+enum class Phase { IDLE, CONNECTING, PLAYING, RECONNECTING, NO_NETWORK, NEEDS_USER_RETRY, BAD_CREDENTIALS, NOT_LOGGED_IN, BLACKOUT }
 
 data class PlayerState(
     val target: PlaybackTarget? = null,
     val phase: Phase = Phase.IDLE,
     val attempt: Int = 0,
     val paused: Boolean = false,
+    val blackoutUntilMs: Long? = null,
 )
 
 sealed interface PlayerEvent {
@@ -79,6 +82,8 @@ class PlayerController(
     private val clock: Clock,
     private val scope: CoroutineScope,
     private val log: EventLog,
+    /** When the channel's broadcast break ends, or null when it is on air. */
+    private val blackoutUntil: (Channel) -> Long? = { null },
     private val policy: RetryPolicy = RetryPolicy(listOf(1_000, 2_000, 4_000, 8_000, 15_000, 30_000)),
     private val watchdog: Watchdog = Watchdog(),
     private val freeze: VideoFreezeDetector = VideoFreezeDetector(),
@@ -122,6 +127,7 @@ class PlayerController(
     private fun open(target: PlaybackTarget, phase: Phase) {
         openJob?.cancel()
         engineOnTarget = false
+        if (target is PlaybackTarget.Live) blackoutUntil(target.channel)?.let { return blackout(target, it) }
         _state.update { it.copy(phase = phase, paused = false) }
         openJob = scope.launch {
             try {
@@ -143,6 +149,26 @@ class PlayerController(
         }
     }
 
+    /** A break started while the channel is on, or the schedule came after it was opened: stop showing it. */
+    fun recheckBlackout(): Boolean {
+        val s = _state.value
+        val t = s.target as? PlaybackTarget.Live ?: return false
+        if (s.phase == Phase.BLACKOUT || s.phase == Phase.IDLE || blackoutUntil(t.channel) == null) return false
+        open(t, s.phase)
+        return true
+    }
+
+    /** No stream during the break; it opens by itself when the break is over. */
+    private fun blackout(target: PlaybackTarget.Live, untilMs: Long) {
+        engine.stop()
+        log.add("«${target.channel.name}»: перерыв в вещании до ${ZalaTime.hhmm(untilMs)}")
+        _state.update { it.copy(phase = Phase.BLACKOUT, paused = false, blackoutUntilMs = untilMs) }
+        openJob = scope.launch {
+            delay((untilMs - clock.nowMs()).coerceAtLeast(0) + BLACKOUT_END_MARGIN_MS)
+            open(target, Phase.CONNECTING)
+        }
+    }
+
     private fun ensureTicking() {
         if (tickJob?.isActive == true) return
         tickJob = scope.launch {
@@ -155,6 +181,7 @@ class PlayerController(
 
     private fun tick() {
         val s = _state.value
+        if (recheckBlackout()) return
         if (s.target is PlaybackTarget.Archive && engineOnTarget && engine.state == EngineState.READY) {
             archivePositionMs = engine.positionMs
             if (archivePositionMs > notFoundAtMs + NOT_FOUND_CLEAR_MS) resetNotFound()
@@ -269,6 +296,8 @@ class PlayerController(
         const val HOLE_SKIP_MS = 20_000L
         /** Played this far past the last 404: the trouble is over. */
         const val NOT_FOUND_CLEAR_MS = 5_000L
+        /** After the break, a moment more so the schedule's clock surely agrees. */
+        const val BLACKOUT_END_MARGIN_MS = 1_000L
 
         fun mmss(ms: Long): String = "%d:%02d".format(ms / 60_000, ms / 1000 % 60)
     }

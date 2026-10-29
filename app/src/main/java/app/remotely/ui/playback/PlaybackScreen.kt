@@ -161,7 +161,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         // Browsing the list: the old channel's picture and sound go at once, the new picture shows when it plays.
         val shown = ps.target?.channel?.code
         val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
-        val hideVideo = oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING)
+        val hideVideo = oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT
         LaunchedEffect(oldChannel) { c.engine.player.volume = if (oldChannel) 0f else 1f }
         VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
@@ -213,7 +213,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             enter = Motion.fromBottom, exit = Motion.toBottom,
         ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
 
-        StatusPill(ps.phase, ps.target, overPreview = withPanel)
+        StatusPill(ps.phase, ps.target, overPreview = withPanel, blackoutUntilMs = ps.blackoutUntilMs)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
 
         val dialog: DialogSpec? = when (val d = ui.dialog) {

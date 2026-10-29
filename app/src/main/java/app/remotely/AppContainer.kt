@@ -9,6 +9,7 @@ import app.remotely.core.NetworkMonitor
 import app.remotely.data.api.MemoryCookieJar
 import app.remotely.data.api.ZalaApi
 import app.remotely.data.api.zalaHttpClient
+import app.remotely.data.repo.BlackoutSchedule
 import app.remotely.data.repo.ChannelRepository
 import app.remotely.data.repo.DiskCache
 import app.remotely.data.repo.EpgRepository
@@ -62,7 +63,8 @@ class AppContainer(context: Context) {
 
     val network = NetworkMonitor(context)
     val engine = ExoEngine(context, httpClient)
-    val player = PlayerController(engine, playback, clock, appScope, log)
+    val blackouts: BlackoutSchedule = BlackoutSchedule({ session.withSession { api.blackouts(it) } }, clock, log, File(context.filesDir, "cache/blackouts.json"), onLoaded = { player.recheckBlackout() })
+    val player: PlayerController = PlayerController(engine, playback, clock, appScope, log, blackoutUntil = { blackouts.until(it.code) })
 
     val updates = UpdateManager(OkHttpClient.Builder().proxy(java.net.Proxy.NO_PROXY).build(), BuildConfig.VERSION_NAME, File(context.cacheDir, "updates"), autoCheck = { settings.settings.first().autoCheckUpdates })
 
@@ -78,6 +80,7 @@ class AppContainer(context: Context) {
     fun onAppStart() {
         heartbeat?.cancel()
         heartbeat = session.startHeartbeat(appScope)
+        blackouts.start(appScope)
         player.start()
         updates.start(appScope)
     }

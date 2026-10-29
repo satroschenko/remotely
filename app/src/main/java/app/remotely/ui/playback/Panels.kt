@@ -731,7 +731,7 @@ private const val SLOW_CONNECT_MS = 3_000L
 
 /** [target]: the stream being opened; a new channel starts the wait over. */
 @Composable
-fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean) {
+fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean, blackoutUntilMs: Long? = null) {
     // A normal channel switch shows only the banner; «Подключение…» only when it takes long.
     var slow by remember { mutableStateOf(false) }
     LaunchedEffect(phase, target) {
@@ -742,6 +742,7 @@ fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean) {
         Phase.CONNECTING -> "Подключение…".takeIf { slow }
         Phase.RECONNECTING -> "Восстанавливаем показ…"
         Phase.NO_NETWORK -> "Нет интернета, ждём…"
+        Phase.BLACKOUT -> "Перерыв в вещании" + (blackoutUntilMs?.let { " до ${ZalaTime.hhmm(it)}" } ?: "")
         else -> null
     }
     AnimatedNullable(
