@@ -51,6 +51,15 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import android.view.View
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.tv.material3.Text
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.text.CueGroup
 import app.remotely.player.SubtitleChoice
 import androidx.media3.ui.PlayerView
@@ -217,6 +226,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             enter = Motion.fromBottom, exit = Motion.toBottom,
         ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
 
+        // Not under the banner or the archive controls: they would cover each other.
+        if (!withPanel && !ui.bannerVisible && ui.archive?.controlsVisible != true) Subtitles(c.engine.player)
         // Touch: a tap on the small video goes back to fullscreen, as OK on the channel in the list.
         if (withPanel && ui.dialog == null) {
             Box(
@@ -288,6 +299,33 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     else -> false
 }
 
+/** Subtitles like on Apple TV: all lines on one slightly transparent box with rounded corners. */
+@Composable
+private fun BoxScope.Subtitles(exo: Player) {
+    var text by remember { mutableStateOf("") }
+    DisposableEffect(exo) {
+        val l = object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) {
+                text = cueGroup.cues.mapNotNull { it.text?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+                    .joinToString("\n").let(SubtitleChoice::fixText)
+            }
+        }
+        exo.addListener(l)
+        text = exo.currentCues.cues.mapNotNull { it.text?.toString()?.trim()?.takeIf(String::isNotEmpty) }.joinToString("\n").let(SubtitleChoice::fixText)
+        onDispose { exo.removeListener(l) }
+    }
+    if (text.isEmpty()) return
+    Text(
+        text,
+        fontSize = 26.sp,
+        lineHeight = 34.sp,
+        color = Color.White,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp).widthIn(max = 760.dp)
+            .clip(RoundedCornerShape(10.dp)).background(Color(0xB3000000)).padding(horizontal = 20.dp, vertical = 10.dp),
+    )
+}
+
 /** Fullscreen ↔ preview by animating a graphics layer: no relayout, no SurfaceView resize jank. */
 @Composable
 private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
@@ -304,20 +342,10 @@ private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
                 (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).apply {
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     player = exo
-                    // Added after the view's own listener, so the corrected subtitle text replaces the original.
-                    val fix = object : Player.Listener {
-                        override fun onCues(cueGroup: CueGroup) {
-                            subtitleView?.setCues(cueGroup.cues.map { c ->
-                                val t = c.text?.toString() ?: return@map c
-                                if (t.contains('ѝ') || t.contains('Ѝ')) c.buildUpon().setText(SubtitleChoice.fixText(t)).build() else c
-                            })
-                        }
-                    }
-                    exo.addListener(fix)
-                    tag = fix
+                    // Subtitles are drawn by [Subtitles] on one shared background, not line by line here.
+                    subtitleView?.visibility = View.GONE
                 }
             },
-            onRelease = { v -> (v.tag as? Player.Listener)?.let(exo::removeListener) },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
