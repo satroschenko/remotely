@@ -159,7 +159,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 7; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 8; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -185,6 +185,11 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item {
                 Item("Качество видео", s.quality.label) {
                     scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
+                }
+            }
+            item {
+                Item("Субтитры (где есть)", if (s.subtitles) "Да" else "Нет") {
+                    scope.launch { c.settings.update { it.copy(subtitles = !it.subtitles) } }
                 }
             }
             item {

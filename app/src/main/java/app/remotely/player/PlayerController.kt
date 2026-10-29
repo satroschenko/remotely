@@ -38,6 +38,8 @@ interface MediaEngine {
     fun seekToLive()
     /** 0 = adaptive; otherwise the best track no taller than [height]. */
     fun setMaxHeight(height: Int)
+    /** Show the channel's subtitles (Russian first) when it has them. */
+    fun setSubtitles(on: Boolean)
     val state: EngineState
     val playWhenReady: Boolean
     val positionMs: Long
@@ -352,6 +354,8 @@ class PlayerController(
     }
 
     fun setMaxHeight(height: Int) = engine.setMaxHeight(height)
+
+    fun setSubtitles(on: Boolean) = engine.setSubtitles(on)
 
     override fun onStateChanged(state: EngineState) {
         when (state) {

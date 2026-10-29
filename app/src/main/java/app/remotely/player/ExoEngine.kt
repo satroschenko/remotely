@@ -9,6 +9,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -61,6 +63,10 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 listener?.onStateChanged(state)
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                if (subtitles) chooseSubtitles(tracks)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -122,6 +128,27 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
             videoOff = false
             applyTrackLimits()
         }, 300)
+    }
+
+    private var subtitles = false
+
+    override fun setSubtitles(on: Boolean) {
+        subtitles = on
+        trackSelector.parameters = trackSelector.buildUponParameters()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
+        if (on) chooseSubtitles(player.currentTracks)
+    }
+
+    /** Zala often lists an empty subtitle track before the real one: take the track [SubtitleChoice] picks. */
+    private fun chooseSubtitles(tracks: Tracks) {
+        val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        val i = SubtitleChoice.pick(groups.map { it.getTrackFormat(0).language }) ?: return
+        if (groups[i].isSelected) return
+        trackSelector.parameters = trackSelector.buildUponParameters()
+            .setOverrideForType(TrackSelectionOverride(groups[i].mediaTrackGroup, 0))
+            .build()
     }
 
     override fun setMaxHeight(height: Int) {

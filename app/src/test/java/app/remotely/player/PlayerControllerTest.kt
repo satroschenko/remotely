@@ -41,6 +41,7 @@ class FakeEngine : MediaEngine {
     override fun seekTo(positionMs: Long) { this.positionMs = positionMs }
     override fun seekToLive() { liveSeeks++ }
     override fun setMaxHeight(height: Int) = Unit
+    override fun setSubtitles(on: Boolean) = Unit
     fun ready() { state = EngineState.READY; l?.onStateChanged(EngineState.READY) }
 }
 

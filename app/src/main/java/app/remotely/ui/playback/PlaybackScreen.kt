@@ -34,6 +34,8 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -49,6 +51,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.text.CueGroup
+import app.remotely.player.SubtitleChoice
 import androidx.media3.ui.PlayerView
 import app.remotely.AppContainer
 import app.remotely.player.Phase
@@ -213,6 +217,20 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             enter = Motion.fromBottom, exit = Motion.toBottom,
         ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
 
+        // Touch: a tap on the small video goes back to fullscreen, as OK on the channel in the list.
+        if (withPanel && ui.dialog == null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(top = PreviewTop, end = PreviewEnd).size(PreviewWidth, PreviewHeight)
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            runCatching { rootFocus.requestFocus() }
+                            val u = state.value.ui
+                            val f = u.focused
+                            if (u.overlay == Overlay.LIST && f != null) vm.onListSelect(f) else vm.closeOverlays()
+                        }
+                    },
+            )
+        }
         StatusPill(ps.phase, ps.target, overPreview = withPanel, blackoutUntilMs = ps.blackoutUntilMs)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
 
@@ -286,8 +304,20 @@ private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
                 (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).apply {
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     player = exo
+                    // Added after the view's own listener, so the corrected subtitle text replaces the original.
+                    val fix = object : Player.Listener {
+                        override fun onCues(cueGroup: CueGroup) {
+                            subtitleView?.setCues(cueGroup.cues.map { c ->
+                                val t = c.text?.toString() ?: return@map c
+                                if (t.contains('ѝ') || t.contains('Ѝ')) c.buildUpon().setText(SubtitleChoice.fixText(t)).build() else c
+                            })
+                        }
+                    }
+                    exo.addListener(fix)
+                    tag = fix
                 }
             },
+            onRelease = { v -> (v.tag as? Player.Listener)?.let(exo::removeListener) },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {

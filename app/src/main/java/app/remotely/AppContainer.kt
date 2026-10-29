@@ -75,6 +75,9 @@ class AppContainer(context: Context) {
         appScope.launch {
             settings.settings.map { it.quality }.distinctUntilChanged().collect { player.setMaxHeight(it.height) }
         }
+        appScope.launch {
+            settings.settings.map { it.subtitles }.distinctUntilChanged().collect { player.setSubtitles(it) }
+        }
     }
 
     fun onAppStart() {

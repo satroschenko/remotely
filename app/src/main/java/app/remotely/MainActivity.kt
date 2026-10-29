@@ -1,5 +1,8 @@
 package app.remotely
 
+import android.app.UiModeManager
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
@@ -11,7 +14,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.util.UnstableApi
 import app.remotely.data.session.SessionState
 import app.remotely.data.store.Settings
@@ -38,9 +47,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hideSystemBarsOnPhone()
         setContent {
             val settings by container.settings.settings.collectAsState(Settings())
             RemotelyTheme(settings.fontSize) { AppRoot(container) }
+        }
+    }
+
+    // Back from a dialog, the keyboard or another app the bars may show again.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBarsOnPhone()
+    }
+
+    /**
+     * Phones and tablets: fullscreen like a video player, otherwise Android 15 draws the app under the
+     * navigation bar and its edge is cut off; a swipe from the edge shows the bars for a moment.
+     * TV boxes have no bars, nothing changes there.
+     */
+    private fun hideSystemBarsOnPhone() {
+        val tv = getSystemService(UiModeManager::class.java)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        if (tv) return
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 
@@ -80,6 +111,8 @@ private fun AppRoot(c: AppContainer) {
     Box(Modifier.fillMaxSize().background(Palette.Background)) {
         AnimatedContent(
             targetState = screen,
+            // The camera cutout of a phone stays free of text and buttons.
+            modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout),
             transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) },
             label = "screen",
         ) { s ->
