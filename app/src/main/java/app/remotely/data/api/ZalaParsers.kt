@@ -130,6 +130,16 @@ object ZalaParsers {
         else -> "$epgBase/iptvepg/" + poster.removePrefix("../").removePrefix("/")
     }
 
+    /** `{"returncode":"0","datavalue":"..."}`; returncode 1 = the cell is empty. */
+    fun userData(body: String): String? {
+        val o = json(body)
+        if (o.code() == "1") return null
+        requireOk(o)
+        return o.str("datavalue").ifEmpty { null }
+    }
+
+    fun userDataSaved(body: String) = requireOk(json(body))
+
     fun subscribedNumbers(body: String): Set<Int> {
         val o = json(body)
         requireOk(o)

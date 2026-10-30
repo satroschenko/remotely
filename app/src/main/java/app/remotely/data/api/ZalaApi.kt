@@ -166,6 +166,23 @@ class ZalaApi(
         get("${s.epgBase}/iptvepg/frame1258/sdk_queryblackout.jsp".toHttpUrl().newBuilder()
             .addQueryParameter("querytype", "2").addQueryParameter("querycode", "0").build()))
 
+    /** The user's data cell [type] on the server (the official client keeps its channel numbering in 8); null = nothing saved. */
+    suspend fun userData(s: Session, type: Int): String? = ZalaParsers.userData(
+        get("${s.epgBase}/iptvepg/frame1258/sdk_getuserdata.jsp".toHttpUrl().newBuilder()
+            .addQueryParameter("datatype", type.toString())
+            .addQueryParameter("timestamp", now()).build()))
+
+    suspend fun saveUserData(s: Session, type: Int, userCode: String, value: String) = ZalaParsers.userDataSaved(execute(
+        Request.Builder()
+            .url("${s.epgBase}/iptvepg/frame1258/sdk_setuserdata.jsp")
+            .post(FormBody.Builder()
+                .add("datatype", type.toString())
+                .add("usercode", userCode)
+                .add("datavalue", value)
+                .build())
+            .build(),
+    ))
+
     suspend fun subscribedNumbers(s: Session): Set<Int> =
         ZalaParsers.subscribedNumbers(get("${s.frameBase}/action/sdk_getsubscribechannel.jsp".toHttpUrl()))
 

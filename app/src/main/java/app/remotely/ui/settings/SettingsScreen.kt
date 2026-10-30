@@ -67,6 +67,7 @@ import app.remotely.BuildConfig
 import app.remotely.R
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
+import app.remotely.data.repo.ServerSettings
 import app.remotely.data.session.SessionState
 import app.remotely.data.store.Settings
 import app.remotely.data.update.InstallResult
@@ -152,14 +153,21 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     val ctx = LocalContext.current
     var login by remember { mutableStateOf("") }
     var confirmLogout by remember { mutableStateOf(false) }
+    var confirmLoad by remember { mutableStateOf(false) }
+    var serverBusy by remember { mutableStateOf(false) }
+    var serverMessage by remember { mutableStateOf<Pair<String, String?>?>(null) }
     val first = remember { FocusRequester() }
+    // The dialog takes the focus; on close it goes back to the server item that opened it.
+    val saveItem = remember { FocusRequester() }
+    val loadItem = remember { FocusRequester() }
+    var serverItem by remember { mutableStateOf(saveItem) }
     // Back from a sub-page the focus returns to the item that opened it.
     val back = remember { FocusRequester() }
     val listState = rememberLazyListState()
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 8; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 10; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -169,8 +177,35 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     val update by c.updates.state.collectAsState()
     val newVersion = (update as? UpdateState.Available)?.release?.version
 
+    fun refocusServerItem() = scope.launch { withFrameNanos { }; runCatching { serverItem.requestFocus() } }
+    fun closeServerDialog() {
+        confirmLoad = false
+        serverMessage = null
+        refocusServerItem()
+    }
+    fun runOnServer(item: FocusRequester, action: suspend () -> ServerSettings.Result) {
+        if (serverBusy) return
+        serverItem = item
+        serverBusy = true
+        scope.launch {
+            val result = action()
+            serverBusy = false
+            serverMessage = serverResultText(result)
+        }
+    }
+
     BackHandler(enabled = confirmLogout) { confirmLogout = false }
-    PageFrame(dialog = { if (confirmLogout) LogoutDialog(c, onLoggedOut) { confirmLogout = false } }) {
+    BackHandler(enabled = confirmLoad || serverMessage != null) { closeServerDialog() }
+    PageFrame(dialog = {
+        when {
+            confirmLogout -> LogoutDialog(c, onLoggedOut) { confirmLogout = false }
+            confirmLoad -> MessageDialog(
+                "Загрузить настройки с сервера?", "Избранное, порядок каналов и настройки заменятся сохранёнными",
+                listOf("Загрузить" to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, "Отмена" to ::closeServerDialog),
+            )
+            serverMessage != null -> serverMessage?.let { (title, text) -> MessageDialog(title, text, listOf("OK" to ::closeServerDialog)) }
+        }
+    }) {
         Title("Настройки")
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
@@ -204,11 +239,32 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                     }
                 }
             }
+            item {
+                Item("Сохранить настройки на сервер", if (serverBusy && serverItem == saveItem) "…" else null, Modifier.focusRequester(saveItem)) {
+                    runOnServer(saveItem) { c.serverSettings.save() }
+                }
+            }
+            item {
+                Item("Загрузить настройки с сервера", if (serverBusy && serverItem == loadItem) "…" else null, Modifier.focusRequester(loadItem)) {
+                    if (!serverBusy) { serverItem = loadItem; confirmLoad = true }
+                }
+            }
             item { Item("Диагностика", modifier = Modifier.returnHere(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
             item { Item("Аккаунт", login) {} }
             item { Item("Выйти из аккаунта") { confirmLogout = true } }
         }
     }
+}
+
+private fun serverResultText(r: ServerSettings.Result): Pair<String, String?> = when (r) {
+    ServerSettings.Result.Saved -> "Настройки сохранены" to "Их можно загрузить на любой приставке или телефоне с этим логином"
+    is ServerSettings.Result.Loaded -> "Настройки загружены" to r.savedAtMs?.let {
+        val d = ZalaTime.localDate(it)
+        "Сохранены ${d.dayOfMonth}.${"%02d".format(d.monthValue)}.${d.year} в ${ZalaTime.hhmm(it)}"
+    }
+    ServerSettings.Result.Empty -> "Не загружено" to "На сервере ещё нет сохранённых настроек"
+    ServerSettings.Result.Unreadable -> "Не загружено" to "Данные на сервере не похожи на настройки Remotely"
+    ServerSettings.Result.Failed -> "Не получилось" to "Нет связи с сервером Zala. Попробуйте ещё раз"
 }
 
 @UnstableApi

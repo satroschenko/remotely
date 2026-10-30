@@ -14,6 +14,7 @@ import app.remotely.data.repo.ChannelRepository
 import app.remotely.data.repo.DiskCache
 import app.remotely.data.repo.EpgRepository
 import app.remotely.data.repo.PlaybackRepository
+import app.remotely.data.repo.ServerSettings
 import app.remotely.data.session.SessionManager
 import app.remotely.data.store.CredentialsStore
 import app.remotely.data.store.KeystoreCipherer
@@ -60,6 +61,18 @@ class AppContainer(context: Context) {
     val channels = ChannelRepository(session, api, settings, cache, log)
     val epg = EpgRepository(session, api, clock)
     val playback = PlaybackRepository(session, api)
+
+    val serverSettings = ServerSettings(
+        read = { session.withSession { api.userData(it, ServerSettings.CELL) } },
+        write = { value ->
+            val user = currentLogin() ?: error("no login")
+            session.withSession { api.saveUserData(it, ServerSettings.CELL, user, value) }
+        },
+        settings = settings,
+        appVersion = BuildConfig.VERSION_NAME,
+        clock = clock,
+        log = log,
+    )
 
     val network = NetworkMonitor(context)
     val engine = ExoEngine(context, httpClient)
