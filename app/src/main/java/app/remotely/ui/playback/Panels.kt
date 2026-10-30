@@ -10,6 +10,12 @@ import app.remotely.ui.common.Motion
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -670,7 +676,9 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(bottomEnd = 8.dp)).background(Color(0x80000000)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("● АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
+        RecordDot()
+        Spacer(Modifier.width(6.dp))
+        Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
         Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 14.sp, color = Palette.Text)
     }
     AnimatedVisibility(
@@ -715,6 +723,18 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Text("OK — пауза    ← → — 30 сек (держать — быстрее)    ↑ ↓ — 5 мин    Назад — в эфир", fontSize = 14.sp, color = Palette.TextDim)
     }
     }
+}
+
+/** Bright red dot that slowly pulses: noticeable, but no blinking to tire the eye over a long recording. */
+@Composable
+private fun RecordDot() {
+    val pulse = rememberInfiniteTransition(label = "record")
+    val alpha by pulse.animateFloat(
+        initialValue = 1f, targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "recordAlpha",
+    )
+    Box(Modifier.size(11.dp).graphicsLayer { this.alpha = alpha }.clip(CircleShape).background(Color(0xFFFF3B30)))
 }
 
 private fun formatDelta(ms: Long): String {
