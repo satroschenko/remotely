@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.ClickableSurfaceDefaults
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import app.remotely.AppContainer
@@ -73,7 +75,10 @@ import app.remotely.data.store.Settings
 import app.remotely.data.update.InstallResult
 import app.remotely.data.update.Installer
 import app.remotely.data.update.UpdateState
+import app.remotely.ui.common.AnimatedNullable
 import app.remotely.ui.common.MessageDialog
+import app.remotely.ui.common.Motion
+import app.remotely.ui.playback.Toast
 import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
@@ -155,7 +160,8 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmLoad by remember { mutableStateOf(false) }
     var serverBusy by remember { mutableStateOf(false) }
-    var serverMessage by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    var serverToast by remember { mutableStateOf<String?>(null) }
+    var toastJob by remember { mutableStateOf<Job?>(null) }
     val first = remember { FocusRequester() }
     // The dialog takes the focus; on close it goes back to the server item that opened it.
     val saveItem = remember { FocusRequester() }
@@ -180,7 +186,6 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun refocusServerItem() = scope.launch { withFrameNanos { }; runCatching { serverItem.requestFocus() } }
     fun closeServerDialog() {
         confirmLoad = false
-        serverMessage = null
         refocusServerItem()
     }
     fun runOnServer(item: FocusRequester, action: suspend () -> ServerSettings.Result) {
@@ -190,12 +195,14 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         scope.launch {
             val result = action()
             serverBusy = false
-            serverMessage = serverResultText(result)
+            serverToast = serverResultText(result, saving = item == saveItem)
+            toastJob?.cancel()
+            toastJob = scope.launch { delay(3_000); serverToast = null }
         }
     }
 
     BackHandler(enabled = confirmLogout) { confirmLogout = false }
-    BackHandler(enabled = confirmLoad || serverMessage != null) { closeServerDialog() }
+    BackHandler(enabled = confirmLoad) { closeServerDialog() }
     PageFrame(dialog = {
         when {
             confirmLogout -> LogoutDialog(c, onLoggedOut) { confirmLogout = false }
@@ -203,7 +210,9 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                 "Загрузить настройки с сервера?", "Избранное, порядок каналов и настройки заменятся сохранёнными",
                 listOf("Загрузить" to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, "Отмена" to ::closeServerDialog),
             )
-            serverMessage != null -> serverMessage?.let { (title, text) -> MessageDialog(title, text, listOf("OK" to ::closeServerDialog)) }
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            AnimatedNullable(serverToast, enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
         }
     }) {
         Title("Настройки")
@@ -256,15 +265,12 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     }
 }
 
-private fun serverResultText(r: ServerSettings.Result): Pair<String, String?> = when (r) {
-    ServerSettings.Result.Saved -> "Настройки сохранены" to "Их можно загрузить на любой приставке или телефоне с этим логином"
-    is ServerSettings.Result.Loaded -> "Настройки загружены" to r.savedAtMs?.let {
-        val d = ZalaTime.localDate(it)
-        "Сохранены ${d.dayOfMonth}.${"%02d".format(d.monthValue)}.${d.year} в ${ZalaTime.hhmm(it)}"
-    }
-    ServerSettings.Result.Empty -> "Не загружено" to "На сервере ещё нет сохранённых настроек"
-    ServerSettings.Result.Unreadable -> "Не загружено" to "Данные на сервере не похожи на настройки Remotely"
-    ServerSettings.Result.Failed -> "Не получилось" to "Нет связи с сервером Zala. Попробуйте ещё раз"
+private fun serverResultText(r: ServerSettings.Result, saving: Boolean): String = when (r) {
+    ServerSettings.Result.Saved -> "Настройки сохранены на сервер"
+    is ServerSettings.Result.Loaded -> "Настройки загружены с сервера"
+    ServerSettings.Result.Empty -> "Не удалось загрузить: на сервере нет сохранённых настроек"
+    ServerSettings.Result.Unreadable -> "Не удалось загрузить: настройки на сервере повреждены"
+    ServerSettings.Result.Failed -> if (saving) "Не удалось сохранить настройки" else "Не удалось загрузить настройки"
 }
 
 @UnstableApi
