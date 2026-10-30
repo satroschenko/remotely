@@ -115,7 +115,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             val l = lists.first { it.all.isNotEmpty() }
-            val s = settings.first()
+            // From the store, not [settings]: that one starts with defaults and may not have the saved channel yet.
+            val s = c.settings.settings.first()
             val start = l.all.firstOrNull { it.code == s.lastChannel } ?: l.favorites.firstOrNull() ?: l.all.first()
             if (_ui.value.current == null) switchTo(start)
         }
@@ -123,7 +124,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         // Each new version is announced once, with a short toast after the picture has started.
         viewModelScope.launch {
             c.updates.state.collect { s ->
-                val st = settings.first()
+                val st = c.settings.settings.first()
                 if (s !is UpdateState.Available || !st.autoCheckUpdates || st.announcedUpdate == s.release.version) return@collect
                 _ui.first { it.current != null }
                 delay(8_000)
