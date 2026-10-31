@@ -15,6 +15,7 @@ import app.remotely.data.session.NotLoggedInException
 import app.remotely.data.store.Settings
 import app.remotely.data.update.UpdateState
 import app.remotely.player.ArchiveTimeline
+import app.remotely.player.AudioTracks
 import app.remotely.player.PlaybackTarget
 import app.remotely.player.PlayerEvent
 import app.remotely.player.SeekAccumulator
@@ -254,6 +255,21 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun hideBanner() {
         bannerJob?.cancel()
         _ui.update { it.copy(bannerVisible = false, bannerDetailed = false) }
+    }
+
+    /** The next sound track of the channel on screen; the choice is remembered for that channel. */
+    fun cycleAudio() {
+        val t = c.engine.tracks.value
+        if (t.audio.size < 2) return
+        val next = AudioTracks.next(t.audio.size, t.selectedAudio)
+        c.engine.selectAudio(next)
+        val code = player.state.value.target?.channel?.code ?: return
+        val language = t.audio[next]
+        viewModelScope.launch {
+            c.settings.update { s -> s.copy(audio = if (language == null) s.audio - code else s.audio + (code to language)) }
+        }
+        // The description stays up while the sound is being chosen.
+        if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
     }
 
     /** OK in fullscreen: first the programme with its description, OK again opens the channel list. */
@@ -565,13 +581,13 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             }
             is PlayerEvent.RecordingUnavailable -> {
                 val p = e.target.programme
-                val next = if (continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthMs).next(p) else null
-                if (next != null) {
-                    toast("«${p.title}» нет в архиве — следующая передача")
-                    playArchive(e.target.channel, next, 0, continued = true)
-                } else {
-                    toast("Нет в архиве")
-                    switchTo(e.target.channel)
+                // Code 98: the whole channel is blocked (not in the subscription) — the next programme would fail too.
+                val blocked = e.code == "98"
+                val next = if (!blocked && continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthMs).next(p) else null
+                when {
+                    blocked -> { toast("Архив этого канала недоступен по подписке"); switchTo(e.target.channel) }
+                    next != null -> { toast("«${p.title}» нет в архиве — следующая передача"); playArchive(e.target.channel, next, 0, continued = true) }
+                    else -> { toast("Нет в архиве"); switchTo(e.target.channel) }
                 }
             }
         }

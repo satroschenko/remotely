@@ -78,6 +78,10 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     val ps by vm.player.state.collectAsState()
     val lists by vm.lists.collectAsState()
     val settings by vm.settings.collectAsState()
+    val tracks by c.engine.tracks.collectAsState()
+    // The sound chosen before for the channel about to play.
+    val targetCode = ps.target?.channel?.code
+    LaunchedEffect(targetCode, settings.audio) { c.engine.preferAudio(targetCode?.let { settings.audio[it] }) }
     val rootFocus = remember { FocusRequester() }
     val activity = LocalContext.current as? Activity
     val okArmed = remember { booleanArrayOf(false) }
@@ -140,7 +144,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         if (isOk && down) okArmed[0] = true
                         if (isOk && up && !okArmed[0]) return@onPreviewKeyEvent true
                         if (isOk && up) okArmed[0] = false
-                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat)
+                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat, soundChoice = ui.bannerVisible && ui.bannerDetailed && tracks.audio.size > 1)
                     }
                 }
             }
@@ -207,7 +211,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ) {
             Box(Modifier.fillMaxSize()) {
                 ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU, dialogOpen = ui.dialog != null)
-                PreviewInfo(ui, vm)
+                PreviewInfo(ui, vm, tracks.takeIf { ps.target?.channel?.code == ui.focused?.code })
             }
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
@@ -224,7 +228,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = Motion.fromBottom, exit = Motion.toBottom,
-        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed) } }
+        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, tracks.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio) } }
 
         // Not under the banner or the archive controls: they would cover each other.
         if (!withPanel && !ui.bannerVisible && ui.archive?.controlsVisible != true) Subtitles(c.engine.player)
@@ -280,9 +284,13 @@ private data class PointerState(val ui: PlaybackUi, val blocking: Boolean, val f
 
 private data class DialogSpec(val title: String, val message: String?, val buttons: List<Pair<String, () -> Unit>>)
 
-private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean): Boolean = when (key) {
-    Key.DirectionUp, Key.ChannelUp -> { if (down) vm.stepChannel(+1, repeat); true }
-    Key.DirectionDown, Key.ChannelDown -> { if (down) vm.stepChannel(-1, repeat); true }
+/** [soundChoice]: the description is open on a channel with several sound tracks — ▼ switches the sound, ▲ does nothing. */
+private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean, soundChoice: Boolean): Boolean = when (key) {
+    Key.DirectionUp -> { if (down && !soundChoice) vm.stepChannel(+1, repeat); true }
+    Key.DirectionDown -> { if (down) { if (soundChoice) { if (!repeat) vm.cycleAudio() } else vm.stepChannel(-1, repeat) }; true }
+    Key.ChannelUp -> { if (down) vm.stepChannel(+1, repeat); true }
+    Key.ChannelDown -> { if (down) vm.stepChannel(-1, repeat); true }
+    Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (up) vm.onOk(); true }
     Key.DirectionLeft -> { if (down && !repeat) vm.openList(); true }
     Key.DirectionRight -> { if (down && !repeat) ui.current?.let(vm::openEpg); true }
@@ -296,6 +304,7 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     Key.DirectionRight, Key.MediaFastForward -> { if (down) vm.seekPress(+1, false, repeat); true }
     Key.DirectionUp -> { if (down) vm.seekPress(+1, true, repeat); true }
     Key.DirectionDown -> { if (down) vm.seekPress(-1, true, repeat); true }
+    Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
     else -> false
 }
 

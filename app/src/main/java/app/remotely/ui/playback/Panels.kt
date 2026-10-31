@@ -80,7 +80,9 @@ import app.remotely.data.api.Programme
 import app.remotely.data.repo.ChannelGroup
 import app.remotely.data.repo.ChannelLists
 import app.remotely.data.repo.EpgLogic
+import app.remotely.player.AudioTracks
 import app.remotely.player.Phase
+import app.remotely.player.StreamTracks
 import app.remotely.ui.common.ProgressBar
 import app.remotely.ui.common.pointerClick
 import androidx.compose.ui.input.pointer.pointerInput
@@ -452,7 +454,7 @@ private fun MenuItem(
 /** Under the preview: the focused channel's programme — now on air, then as many next ones as fit. */
 @UnstableApi
 @Composable
-fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel) {
+fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTracks? = null) {
     val ch = ui.focused ?: ui.current ?: return
     val now = vm.nowMs()
     val loaded = ui.focusedUpcoming.filter { it.endMs > now }
@@ -461,7 +463,10 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel) {
             .padding(top = InfoTop, start = InfoSide, end = InfoSide, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp))
+        }
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
                 loaded.forEach { p -> UpcomingRow(p.startMs, p.endMs, p.title, now) }
@@ -632,8 +637,30 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
     }
 }
 
+/** Small «SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright. */
 @Composable
-fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean) {
+fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier) {
+    val sounds = tracks?.audio.orEmpty()
+    if (tracks?.subtitles != true && sounds.size <= 1) return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (tracks?.subtitles == true) Text("SUB", fontSize = fontSize, color = Palette.TextDim)
+        if (sounds.size > 1) {
+            if (tracks?.subtitles == true) Spacer(Modifier.width(14.dp))
+            sounds.forEachIndexed { i, l ->
+                if (i > 0) Text(" / ", fontSize = fontSize, color = Palette.TextDim)
+                val on = i == tracks?.selectedAudio
+                Text(
+                    AudioTracks.name(l, i), fontSize = fontSize, color = if (on) Palette.Focus else Palette.TextDim,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean, tracks: StreamTracks? = null, onSound: () -> Unit = {}) {
+    val sounds = tracks?.audio.orEmpty()
     Column(
         Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -642,6 +669,7 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
             Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
             Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp))
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }
@@ -659,6 +687,7 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
         // At most a third of the screen; the full text is in the programme list (→).
         val description = now?.description?.takeIf { detailed && it.isNotBlank() }
         if (description != null) Text(description, fontSize = 17.sp, color = Palette.Text, maxLines = 5, overflow = TextOverflow.Ellipsis)
+        if (detailed && sounds.size > 1) Text("▼ — сменить звук", fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.pointerClick(onClick = onSound))
         next?.let { Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         Text(if (detailed) "OK — каналы    → — программа передач" else "OK — описание    ← — каналы    → — программа передач", fontSize = 14.sp, color = Palette.TextDim)
     }

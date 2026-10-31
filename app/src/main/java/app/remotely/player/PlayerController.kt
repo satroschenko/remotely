@@ -75,7 +75,8 @@ data class PlayerState(
 
 sealed interface PlayerEvent {
     data class RecordingEnded(val target: PlaybackTarget.Archive, val positionMs: Long) : PlayerEvent
-    data class RecordingUnavailable(val target: PlaybackTarget.Archive) : PlayerEvent
+    /** [code]: the portal's reason, e.g. "98" = blocked (channel not in the subscription). */
+    data class RecordingUnavailable(val target: PlaybackTarget.Archive, val code: String? = null) : PlayerEvent
 }
 
 class PlayerController(
@@ -223,7 +224,7 @@ class PlayerController(
             is NotLoggedInException -> return setPhase(Phase.NOT_LOGGED_IN)
             is ArchiveUnavailableException -> if (target is PlaybackTarget.Archive) {
                 log.add("Запись недоступна (${e.code})")
-                _events.tryEmit(PlayerEvent.RecordingUnavailable(target))
+                _events.tryEmit(PlayerEvent.RecordingUnavailable(target, e.code))
                 return
             }
         }

@@ -29,6 +29,8 @@ data class Settings(
     val autostart: Boolean = false,
     /** Zala's subtitles where a channel has them (about a quarter of the channels). */
     val subtitles: Boolean = false,
+    /** Sound track language chosen per channel code (only channels with several tracks), kept across restarts. */
+    val audio: Map<String, String> = emptyMap(),
     /** Look for a new version on start and once a day; off = only «Проверить сейчас». */
     val autoCheckUpdates: Boolean = true,
     /** The newest version already announced with a toast: each update is announced once. */

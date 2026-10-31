@@ -21,6 +21,9 @@ import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 
 /** Media3 ExoPlayer behind [MediaEngine]. Must be used on the main thread. */
@@ -69,6 +72,7 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
 
             override fun onTracksChanged(tracks: Tracks) {
                 if (subtitles) chooseSubtitles(tracks)
+                onTracks(tracks)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -94,6 +98,9 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
 
     override fun open(url: String, isLive: Boolean, startPositionMs: Long) {
         this.isLive = isLive
+        _tracks.value = StreamTracks()
+        audioApplied = false
+        trackSelector.parameters = trackSelector.buildUponParameters().clearOverridesOfType(C.TRACK_TYPE_AUDIO).build()
         val item = MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_MPD).build()
         if (isLive) player.setMediaItem(item) else player.setMediaItem(item, startPositionMs)
         player.prepare()
@@ -151,6 +158,39 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
         trackSelector.parameters = trackSelector.buildUponParameters()
             .setOverrideForType(TrackSelectionOverride(groups[i].mediaTrackGroup, 0))
             .build()
+    }
+
+    private val _tracks = MutableStateFlow(StreamTracks())
+    /** Sound tracks and subtitles of what is playing; empty until the stream is known. */
+    val tracks: StateFlow<StreamTracks> = _tracks.asStateFlow()
+    private var wantedAudio: String? = null
+    private var audioApplied = false
+
+    /** The language chosen before for the channel about to play: switched to as soon as its tracks are known. */
+    fun preferAudio(language: String?) {
+        wantedAudio = language
+    }
+
+    fun selectAudio(index: Int) {
+        val group = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.getOrNull(index) ?: return
+        trackSelector.parameters = trackSelector.buildUponParameters()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, 0))
+            .build()
+    }
+
+    private fun onTracks(tracks: Tracks) {
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val languages = audio.map { it.getTrackFormat(0).language }
+        if (!audioApplied && audio.isNotEmpty()) {
+            audioApplied = true
+            // No choice yet: Russian, whatever the box's system language (ExoPlayer would follow that).
+            AudioTracks.preferred(languages, wantedAudio ?: AudioTracks.DEFAULT_LANGUAGE)?.let { if (!audio[it].isSelected) return selectAudio(it) }
+        }
+        _tracks.value = StreamTracks(
+            audio = languages,
+            selectedAudio = audio.indexOfFirst { it.isSelected }.coerceAtLeast(0),
+            subtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT },
+        )
     }
 
     override fun setMaxHeight(height: Int) {
