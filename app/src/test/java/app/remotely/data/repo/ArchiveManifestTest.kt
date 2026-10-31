@@ -59,6 +59,16 @@ class ArchiveManifestTest {
         assertTrue(segmentStarts.all { it.toLong() < 305676000000 })
     }
 
+    @Test fun overlappingWindowsAskedAtOnceJoinWithoutRepeats() {
+        // The second window asked 95 minutes in, as the parallel requests do: 5 minutes overlap with the first.
+        val overlap = ArchiveManifest.Window("https://itv2.tv.zala.by:6430/cpsp777/2/ch1/manifest.mpd?a=3", res("tstv2_overlap.mpd"))
+        val mpd = ArchiveManifest.fromTimeshift(listOf(w1, overlap), start, end)!!
+        assertEquals(end - start, ArchiveManifest.durationMs(mpd))
+        assertTrue(mpd.contains("start=\"PT6002.277S\""))
+        val segmentStarts = Regex("""<S [^>]*\bt="(\d+)"""").findAll(mpd).map { it.groupValues[1] }.toList()
+        assertEquals(segmentStarts.size / 2, segmentStarts.toSet().size)
+    }
+
     @Test fun oneWindowIsAsMuchAsItHas() {
         val mpd = ArchiveManifest.fromTimeshift(listOf(w1), start, end)!!
         assertEquals(utc("2026-10-31T13:35:02.277Z") - start, ArchiveManifest.durationMs(mpd))
