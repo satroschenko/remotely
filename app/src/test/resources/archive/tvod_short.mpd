@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<MPD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:mpeg:dash:schema:mpd:2011 http://standards.iso.org/ittf/PubliclyAvailableStandards/MPEG-DASH_schema_files/DASH-MPD.xsd" profiles="urn:mpeg:dash:profile:isoff-main:2011" type="static" xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT702.000S" minBufferTime="PT10S">
+  <Period>
+    <AdaptationSet id="1" maxFrameRate="25" segmentAlignment="true" maxWidth="1920" maxHeight="1080">
+      <SegmentTemplate timescale="1000" initialization="init-$RepresentationID$.mp4?JITPDRMType=NO&amp;startNumber=1&amp;NeedJITP=1&amp;programbegin=20261031115500%2B00&amp;ispcode=55&amp;ztecid=ch00000090990000000551&amp;programend=20261031140000%2B00&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;JITPMediaType=DASH" media="fragment-$Time$-$RepresentationID$.m4s?JITPDRMType=NO&amp;startNumber=1&amp;NeedJITP=1&amp;programbegin=20261031115500%2B00&amp;ispcode=55&amp;ztecid=ch00000090990000000551&amp;programend=20261031140000%2B00&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;JITPMediaType=DASH" startNumber="1">
+        <SegmentTimeline>
+          <S r="116" d="6000" />
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation frameRate="25" sar="1:1" id="f1-v1-x3" startWithSAP="1" bandwidth="990645" codecs="avc1.4d401e" mimeType="video/mp4" height="360" width="640" />
+      <Representation frameRate="25" sar="1:1" id="f2-v1-x3" startWithSAP="1" bandwidth="2087165" codecs="avc1.640028" mimeType="video/mp4" height="576" width="1024" />
+      <Representation frameRate="25" sar="1:1" id="f3-v1-x3" startWithSAP="1" bandwidth="3171733" codecs="avc1.640028" mimeType="video/mp4" height="720" width="1280" />
+      <Representation frameRate="25" sar="1:1" id="f4-v1-x3" startWithSAP="1" bandwidth="4412210" codecs="avc1.640029" mimeType="video/mp4" height="1080" width="1920" />
+    </AdaptationSet>
+    <AdaptationSet segmentAlignment="true" id="2">
+      <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2" />
+      <SegmentTemplate timescale="1000" initialization="init-$RepresentationID$.mp4?JITPDRMType=NO&amp;startNumber=1&amp;NeedJITP=1&amp;programbegin=20261031115500%2B00&amp;ispcode=55&amp;ztecid=ch00000090990000000551&amp;programend=20261031140000%2B00&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;JITPMediaType=DASH" media="fragment-$Time$-$RepresentationID$.m4s?JITPDRMType=NO&amp;startNumber=1&amp;NeedJITP=1&amp;programbegin=20261031115500%2B00&amp;ispcode=55&amp;ztecid=ch00000090990000000551&amp;programend=20261031140000%2B00&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;JITPMediaType=DASH" startNumber="1">
+        <SegmentTimeline>
+          <S r="116" d="6000" />
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="f1-a1-x3" codecs="mp4a.40.2" startWithSAP="1" mimeType="audio/mp4" bandwidth="93368" audioSamplingRate="48000" />
+    </AdaptationSet>
+  </Period>
+</MPD>

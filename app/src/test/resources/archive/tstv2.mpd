@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<MPD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" minimumUpdatePeriod="PT5.000S" profiles="urn:mpeg:dash:profile:isoff-live:2011,http://dashif.org/guidelines/dash-if-simple" minBufferTime="PT10.000S" availabilityStartTime="2017-02-22T16:00:00Z" publishTime="2026-10-31T15:15:02Z" xmlns="urn:mpeg:dash:schema:mpd:2011" xsi:schemaLocation="urn:mpeg:dash:schema:mpd:2011 http://standards.iso.org/ittf/PubliclyAvailableStandards/MPEG-DASH_schema_files/DASH-MPD.xsd" type="dynamic" timeShiftBufferDepth="PT5999.999S">
+  <Period start="PT0S" id="0">
+    <AdaptationSet id="1" maxFrameRate="25" segmentAlignment="true" maxWidth="1920" maxHeight="1080">
+      <SegmentTemplate timescale="1000" initialization="init-$RepresentationID$.mp4?starttime=20261031133500&amp;JITPDRMType=NO&amp;startNumber=30567451&amp;JITPMediaType=DASH&amp;ispcode=51&amp;ors_offset=8164-20261031133500&amp;ztecid=ch00000090990000000551&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;zte_offset=8164-20261031133500&amp;NeedJITP=1" media="fragment-$Time$-$RepresentationID$.m4s?starttime=20261031133500&amp;JITPDRMType=NO&amp;startNumber=30567451&amp;JITPMediaType=DASH&amp;ispcode=51&amp;ors_offset=8164-20261031133500&amp;ztecid=ch00000090990000000551&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;zte_offset=8164-20261031133500&amp;NeedJITP=1" startNumber="30567451">
+        <SegmentTimeline>
+          <S t="305674502277" d="6000" r="69" />
+          <S t="305674922277" d="5999" />
+          <S t="305674928276" d="6000" r="928" />
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation frameRate="25" sar="1:1" id="f1-v1-x3" startWithSAP="1" bandwidth="991321" codecs="avc1.4d401e" mimeType="video/mp4" height="360" width="640" />
+      <Representation frameRate="25" sar="1:1" id="f2-v1-x3" startWithSAP="1" bandwidth="2081897" codecs="avc1.640028" mimeType="video/mp4" height="576" width="1024" />
+      <Representation frameRate="25" sar="1:1" id="f3-v1-x3" startWithSAP="1" bandwidth="3161825" codecs="avc1.640028" mimeType="video/mp4" height="720" width="1280" />
+      <Representation frameRate="25" sar="1:1" id="f4-v1-x3" startWithSAP="1" bandwidth="4450877" codecs="avc1.640029" mimeType="video/mp4" height="1080" width="1920" />
+    </AdaptationSet>
+    <AdaptationSet segmentAlignment="true" id="2">
+      <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2" />
+      <SegmentTemplate timescale="1000" initialization="init-$RepresentationID$.mp4?starttime=20261031133500&amp;JITPDRMType=NO&amp;startNumber=30567451&amp;JITPMediaType=DASH&amp;ispcode=51&amp;ors_offset=8164-20261031133500&amp;ztecid=ch00000090990000000551&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;zte_offset=8164-20261031133500&amp;NeedJITP=1" media="fragment-$Time$-$RepresentationID$.m4s?starttime=20261031133500&amp;JITPDRMType=NO&amp;startNumber=30567451&amp;JITPMediaType=DASH&amp;ispcode=51&amp;ors_offset=8164-20261031133500&amp;ztecid=ch00000090990000000551&amp;IASHttpSessionId=X&amp;m4s_min=1&amp;filedura=6&amp;zte_offset=8164-20261031133500&amp;NeedJITP=1" startNumber="30567451">
+        <SegmentTimeline>
+          <S t="305674502277" d="6000" r="69" />
+          <S t="305674922277" d="5999" />
+          <S t="305674928276" d="6000" r="928" />
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="f1-a1-x3" codecs="mp4a.40.2" startWithSAP="1" mimeType="audio/mp4" bandwidth="93384" audioSamplingRate="48000" />
+    </AdaptationSet>
+  </Period>
+</MPD>

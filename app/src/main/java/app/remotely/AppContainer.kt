@@ -60,7 +60,7 @@ class AppContainer(context: Context) {
     private val cache = DiskCache(File(context.filesDir, "cache"))
     val channels = ChannelRepository(session, api, settings, cache, log)
     val epg = EpgRepository(session, api, clock)
-    val playback = PlaybackRepository(session, api)
+    val playback = PlaybackRepository(session, api, clock, log)
 
     val serverSettings = ServerSettings(
         read = { session.withSession { api.userData(it, ServerSettings.CELL) } },

@@ -12,6 +12,7 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -53,7 +54,8 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
             ).build(),
         )
         .setMediaSourceFactory(
-            DashMediaSource.Factory(OkHttpDataSource.Factory(httpClient)).setLoadErrorHandlingPolicy(loadErrors),
+            // data: for the archive manifests downloaded and fixed up beforehand (see ArchiveManifest).
+            DashMediaSource.Factory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(httpClient))).setLoadErrorHandlingPolicy(loadErrors),
         )
         .build()
     private var listener: MediaEngine.Listener? = null

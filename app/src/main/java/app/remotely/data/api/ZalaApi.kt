@@ -215,6 +215,14 @@ class ZalaApi(
             .build(),
     ))
 
+    /** A stream manifest as the player would get it: the address it finally came from and its text. */
+    suspend fun manifest(url: String): Pair<String, String> = withContext(Dispatchers.IO) {
+        client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+            resp.request.url.toString() to (resp.body?.string() ?: "")
+        }
+    }
+
     /** Recording of a programme (also works for the one on air: manifest ends at "now"). */
     suspend fun archiveUrl(s: Session, ch: Channel, programmeCode: String): String {
         val authId = ZalaParsers.tvodAuthId(get("${s.frameBase}/action/get_authTvodresult.jsp".toHttpUrl().newBuilder()
