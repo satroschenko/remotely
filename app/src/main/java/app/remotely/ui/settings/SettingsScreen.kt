@@ -21,6 +21,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -506,7 +511,8 @@ private fun UpdatesPage(c: AppContainer) {
     }
 }
 
-private class HelpSection(val title: String, val rows: List<Pair<String, String>>)
+/** [swatches]: a colour per row, drawn as the stripe the programmes get (the genre legend). */
+private class HelpSection(val title: String, val rows: List<Pair<String, String>>, val swatches: List<Long>? = null)
 
 /** Only what a viewer needs: which key does what. */
 private val helpSections = listOf(
@@ -517,7 +523,11 @@ private val helpSections = listOf(
         "▶" to "программа передач",
         "Назад" to "список каналов, ещё раз — меню",
     )),
-    HelpSection("Цвет жанров (Настройки → «Цвет жанров»)", GenreGroup.entries.map { it.colour to it.label }),
+    HelpSection(
+        "Цвет жанров (Настройки → «Цвет жанров»)",
+        GenreGroup.entries.map { it.colour to it.label },
+        swatches = GenreGroup.entries.map { it.argb },
+    ),
     HelpSection("Субтитры и звук", listOf(
         "SUB" to "у канала есть субтитры: Настройки → «Субтитры (где есть)»",
         "RU/EN" to "у канала несколько звуковых дорожек",
@@ -569,9 +579,13 @@ private fun HelpPage() {
                 ) {
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(sec.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 2.dp))
-                        sec.rows.forEach { (key, what) ->
-                            Row {
-                                Text(key, fontSize = 17.sp, color = Palette.Focus, modifier = Modifier.width(200.dp))
+                        sec.rows.forEachIndexed { r, (key, what) ->
+                            val swatch = sec.swatches?.getOrNull(r)?.let { Color(it) }
+                            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                                if (swatch != null) {
+                                    Box(Modifier.fillMaxHeight().padding(end = 10.dp).width(4.dp).clip(RoundedCornerShape(2.dp)).background(swatch))
+                                }
+                                Text(key, fontSize = 17.sp, color = swatch ?: Palette.Focus, modifier = Modifier.width(if (swatch != null) 186.dp else 200.dp))
                                 Text(what, fontSize = 17.sp, color = Palette.Text)
                             }
                         }
