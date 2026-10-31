@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.activity.compose.BackHandler
@@ -213,7 +214,9 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ) {
             Box(Modifier.fillMaxSize()) {
                 ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU, dialogOpen = ui.dialog != null)
-                PreviewInfo(ui, vm, playingTracks?.takeIf { ps.target?.channel?.code == ui.focused?.code })
+                CompositionLocalProvider(LocalGenreColors provides settings.genreColors) {
+                    PreviewInfo(ui, vm, playingTracks?.takeIf { ps.target?.channel?.code == ui.focused?.code })
+                }
             }
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
@@ -222,7 +225,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             }
         }
         AnimatedNullable(ui.epg.takeIf { ui.overlay == Overlay.EPG }, enter = Motion.fromRight, exit = Motion.toRight) { epg ->
-            Box(Modifier.fillMaxSize()) { EpgPanel(vm, epg) }
+            Box(Modifier.fillMaxSize()) { CompositionLocalProvider(LocalGenreColors provides settings.genreColors) { EpgPanel(vm, epg) } }
         }
 
         ui.archive?.let { ArchiveOverlay(it, ps.paused, vm) }
@@ -230,7 +233,13 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = Motion.fromBottom, exit = Motion.toBottom,
-        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio) } }
+        ) { ch ->
+            Box(Modifier.fillMaxWidth()) {
+                CompositionLocalProvider(LocalGenreColors provides settings.genreColors) {
+                    Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio)
+                }
+            }
+        }
 
         // Not under the banner or the archive controls: they would cover each other.
         if (!withPanel && !ui.bannerVisible && ui.archive?.controlsVisible != true) Subtitles(c.engine.player)

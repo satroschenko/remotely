@@ -44,6 +44,7 @@ object SettingsBackup {
             put("fontSize", s.fontSize.name)
             put("quality", s.quality.name)
             put("subtitles", s.subtitles)
+            put("genreColors", s.genreColors)
             put("autostart", s.autostart)
             put("autoCheckUpdates", s.autoCheckUpdates)
         }
@@ -62,6 +63,7 @@ object SettingsBackup {
             fontSize = s.enum<FontSize>("fontSize") ?: current.fontSize,
             quality = s.enum<Quality>("quality") ?: current.quality,
             subtitles = s.bool("subtitles") ?: current.subtitles,
+            genreColors = s.bool("genreColors") ?: current.genreColors,
             autostart = s.bool("autostart") ?: current.autostart,
             autoCheckUpdates = s.bool("autoCheckUpdates") ?: current.autoCheckUpdates,
         )

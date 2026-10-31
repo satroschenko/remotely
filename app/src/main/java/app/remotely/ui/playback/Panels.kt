@@ -47,6 +47,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import app.remotely.data.repo.Genres
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -469,7 +472,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
         }
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
-                loaded.forEach { p -> UpcomingRow(p.startMs, p.endMs, p.title, now) }
+                loaded.forEach { p -> UpcomingRow(p.startMs, p.endMs, p.title, now, p.genre) }
             } else if (ch.nowTitle.isNotBlank() && now < ch.nowEndMs) {
                 // Programme not loaded yet: what the channel list already knows.
                 UpcomingRow(ch.nowStartMs, ch.nowEndMs, ch.nowTitle, now)
@@ -480,22 +483,25 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
 }
 
 @Composable
-private fun UpcomingRow(startMs: Long, endMs: Long, title: String, now: Long) {
+private fun UpcomingRow(startMs: Long, endMs: Long, title: String, now: Long, genre: String? = null) {
     val onAir = now >= startMs && now < endMs
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                ZalaTime.hhmm(startMs), fontSize = 17.sp, color = if (onAir) Palette.Accent else Palette.TextDim,
-                fontWeight = if (onAir) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.width(56.dp),
-            )
-            Text(
-                title, fontSize = 17.sp, color = if (onAir) Palette.Text else Palette.TextDim,
-                fontWeight = if (onAir) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (onAir) {
-            Spacer(Modifier.height(4.dp))
-            ProgressBar(EpgLogic.progress(startMs, endMs, now), Modifier.padding(start = 56.dp).fillMaxWidth())
+    Row(Modifier.height(IntrinsicSize.Min)) {
+        GenreStripe(genre, title)
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    ZalaTime.hhmm(startMs), fontSize = 17.sp, color = if (onAir) Palette.Accent else Palette.TextDim,
+                    fontWeight = if (onAir) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.width(56.dp),
+                )
+                Text(
+                    title, fontSize = 17.sp, color = if (onAir) Palette.Text else Palette.TextDim,
+                    fontWeight = if (onAir) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (onAir) {
+                Spacer(Modifier.height(4.dp))
+                ProgressBar(EpgLogic.progress(startMs, endMs, now), Modifier.padding(start = 56.dp).fillMaxWidth())
+            }
         }
     }
 }
@@ -623,7 +629,8 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
         border = FocusStyle.border(),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(IntrinsicSize.Min).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            GenreStripe(p.genre, p.title)
             Text(ZalaTime.hhmm(p.startMs), fontSize = 20.sp, color = if (past) Palette.TextDim else Palette.Text, modifier = Modifier.width(68.dp))
             Column(Modifier.weight(1f)) {
                 ScrollingLine(p.title, focused, fontSize = 20.sp, color = if (past && !recordable) Palette.TextDim else Palette.Text)
@@ -635,6 +642,17 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
             }
         }
     }
+}
+
+/** Настройки → «Цвет жанров»; provided where programmes are listed. */
+val LocalGenreColors = staticCompositionLocalOf { false }
+
+/** A thin bar in the colour of the programme's genre group; the room is kept even without a genre so rows line up. */
+@Composable
+fun GenreStripe(genre: String?, title: String?) {
+    if (!LocalGenreColors.current) return
+    val colour = Genres.of(genre, title)?.let { Color(it.argb) } ?: Color.Transparent
+    Box(Modifier.fillMaxHeight().padding(end = 10.dp).width(4.dp).clip(RoundedCornerShape(2.dp)).background(colour))
 }
 
 /** Small «SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright. */
@@ -677,7 +695,8 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
         val start = now?.startMs ?: ch.nowStartMs
         val end = now?.endMs ?: ch.nowEndMs
         if (!title.isNullOrBlank()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                GenreStripe(now?.genre, title)
                 Text("${ZalaTime.hhmm(start)}–${ZalaTime.hhmm(end)}", fontSize = 20.sp, color = Palette.Accent)
                 Spacer(Modifier.width(14.dp))
                 Text(title, fontSize = 24.sp, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -688,7 +707,12 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
         val description = now?.description?.takeIf { detailed && it.isNotBlank() }
         if (description != null) Text(description, fontSize = 17.sp, color = Palette.Text, maxLines = 5, overflow = TextOverflow.Ellipsis)
         if (detailed && sounds.size > 1) Text("▼ — сменить звук", fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.pointerClick(onClick = onSound))
-        next?.let { Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        next?.let {
+            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                GenreStripe(it.genre, it.title)
+                Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         Text(if (detailed) "OK — каналы    → — программа передач" else "OK — описание    ← — каналы    → — программа передач", fontSize = 14.sp, color = Palette.TextDim)
     }
 }

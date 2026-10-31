@@ -69,6 +69,7 @@ import app.remotely.BuildConfig
 import app.remotely.R
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
+import app.remotely.data.repo.GenreGroup
 import app.remotely.data.repo.ServerSettings
 import app.remotely.data.session.SessionState
 import app.remotely.data.store.Settings
@@ -173,7 +174,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 10; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 11; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -234,6 +235,11 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item {
                 Item("Субтитры (где есть)", if (s.subtitles) "Да" else "Нет") {
                     scope.launch { c.settings.update { it.copy(subtitles = !it.subtitles) } }
+                }
+            }
+            item {
+                Item("Цвет жанров", if (s.genreColors) "Да" else "Нет") {
+                    scope.launch { c.settings.update { it.copy(genreColors = !it.genreColors) } }
                 }
             }
             item {
@@ -511,6 +517,7 @@ private val helpSections = listOf(
         "▶" to "программа передач",
         "Назад" to "список каналов, ещё раз — меню",
     )),
+    HelpSection("Цвет жанров (Настройки → «Цвет жанров»)", GenreGroup.entries.map { it.colour to it.label }),
     HelpSection("Субтитры и звук", listOf(
         "SUB" to "у канала есть субтитры: Настройки → «Субтитры (где есть)»",
         "RU/EN" to "у канала несколько звуковых дорожек",
