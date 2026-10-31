@@ -79,6 +79,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
     val lists by vm.lists.collectAsState()
     val settings by vm.settings.collectAsState()
     val tracks by c.engine.tracks.collectAsState()
+    // Until the new channel plays, the engine still reports the previous one's tracks: no badges then.
+    val playingTracks = tracks.takeIf { ps.phase == Phase.PLAYING }
     // The sound chosen before for the channel about to play.
     val targetCode = ps.target?.channel?.code
     LaunchedEffect(targetCode, settings.audio) { c.engine.preferAudio(targetCode?.let { settings.audio[it] }) }
@@ -144,7 +146,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         if (isOk && down) okArmed[0] = true
                         if (isOk && up && !okArmed[0]) return@onPreviewKeyEvent true
                         if (isOk && up) okArmed[0] = false
-                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat, soundChoice = ui.bannerVisible && ui.bannerDetailed && tracks.audio.size > 1)
+                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat, soundChoice = ui.bannerVisible && ui.bannerDetailed && (playingTracks?.audio?.size ?: 0) > 1)
                     }
                 }
             }
@@ -211,7 +213,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ) {
             Box(Modifier.fillMaxSize()) {
                 ChannelPanel(vm, ui, lists, settings.favorites, dimmed = ui.overlay == Overlay.MENU, dialogOpen = ui.dialog != null)
-                PreviewInfo(ui, vm, tracks.takeIf { ps.target?.channel?.code == ui.focused?.code })
+                PreviewInfo(ui, vm, playingTracks?.takeIf { ps.target?.channel?.code == ui.focused?.code })
             }
         }
         AnimatedVisibility(visible = ui.overlay == Overlay.MENU, enter = Motion.fromLeft, exit = Motion.toLeft) {
@@ -228,7 +230,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = Motion.fromBottom, exit = Motion.toBottom,
-        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, tracks.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio) } }
+        ) { ch -> Box(Modifier.fillMaxWidth()) { Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio) } }
 
         // Not under the banner or the archive controls: they would cover each other.
         if (!withPanel && !ui.bannerVisible && ui.archive?.controlsVisible != true) Subtitles(c.engine.player)
