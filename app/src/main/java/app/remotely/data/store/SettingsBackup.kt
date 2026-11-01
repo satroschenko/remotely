@@ -1,6 +1,5 @@
 package app.remotely.data.store
 
-import app.remotely.ui.theme.FontSize
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -28,10 +27,15 @@ object SettingsBackup {
     const val MAX_CHARS = 60_000
     private const val MAX_CODES = 2_000
     private const val MAX_CODE_LENGTH = 64
+    private const val MAX_LANGUAGE_LENGTH = 16
 
     data class Loaded(val settings: Settings, val savedAtMs: Long?, val appVersion: String?)
 
-    /** Favourites, hidden channels, channel order and preferences; not the last channel or update bookkeeping. */
+    /**
+     * What is the same on every device: favourites, hidden channels, channel order, subtitles, genre colours,
+     * the sound chosen per channel. Quality, font size and autostart belong to the screen and stay on it
+     * (older backups carry them; they are skipped).
+     */
     fun encode(s: Settings, appVersion: String, nowMs: Long): String = buildJsonObject {
         put("format", FORMAT)
         put("version", VERSION)
@@ -41,11 +45,9 @@ object SettingsBackup {
             putJsonArray("favorites") { s.favorites.forEach { add(JsonPrimitive(it)) } }
             putJsonArray("hidden") { s.hidden.forEach { add(JsonPrimitive(it)) } }
             putJsonArray("order") { s.order.forEach { add(JsonPrimitive(it)) } }
-            put("fontSize", s.fontSize.name)
-            put("quality", s.quality.name)
+            putJsonObject("audio") { s.audio.forEach { (code, language) -> put(code, language) } }
             put("subtitles", s.subtitles)
             put("genreColors", s.genreColors)
-            put("autostart", s.autostart)
             put("autoCheckUpdates", s.autoCheckUpdates)
         }
     }.toString()
@@ -60,11 +62,9 @@ object SettingsBackup {
             favorites = s.codes("favorites") ?: current.favorites,
             hidden = s.codes("hidden")?.toSet() ?: current.hidden,
             order = s.codes("order") ?: current.order,
-            fontSize = s.enum<FontSize>("fontSize") ?: current.fontSize,
-            quality = s.enum<Quality>("quality") ?: current.quality,
+            audio = s.languages("audio") ?: current.audio,
             subtitles = s.bool("subtitles") ?: current.subtitles,
             genreColors = s.bool("genreColors") ?: current.genreColors,
-            autostart = s.bool("autostart") ?: current.autostart,
             autoCheckUpdates = s.bool("autoCheckUpdates") ?: current.autoCheckUpdates,
         )
         return Loaded(loaded, (root["savedAt"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }, root.string("app")?.take(20))
@@ -88,8 +88,15 @@ object SettingsBackup {
 
     private fun JsonObject.bool(key: String): Boolean? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
 
-    private inline fun <reified E : Enum<E>> JsonObject.enum(key: String): E? =
-        string(key)?.let { name -> enumValues<E>().firstOrNull { it.name == name } }
+    /** Channel code → language code; anything but short strings is dropped. */
+    private fun JsonObject.languages(key: String): Map<String, String>? {
+        val obj = this[key] as? JsonObject ?: return null
+        return obj.entries.asSequence()
+            .mapNotNull { (code, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.let { code.trim() to it } }
+            .filter { (code, l) -> code.isNotEmpty() && code.length <= MAX_CODE_LENGTH && l.isNotEmpty() && l.length <= MAX_LANGUAGE_LENGTH }
+            .take(MAX_CODES)
+            .toMap()
+    }
 
     /** Channel codes: strings only, no blanks, no repeats, sane lengths. */
     private fun JsonObject.codes(key: String): List<String>? {

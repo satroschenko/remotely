@@ -468,7 +468,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp))
+            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp), onSound = vm::cycleAudio)
         }
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
@@ -655,22 +655,27 @@ fun GenreStripe(genre: String?, title: String?) {
     Box(Modifier.fillMaxHeight().padding(end = 10.dp).width(4.dp).clip(RoundedCornerShape(2.dp)).background(colour))
 }
 
-/** Small «SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright. */
+/**
+ * Small «SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright.
+ * A tap on the languages switches the sound (phones, TV boxes with a mouse); the remote has ▼ for it.
+ */
 @Composable
-fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier) {
+fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier, onSound: (() -> Unit)? = null) {
     val sounds = tracks?.audio.orEmpty()
     if (tracks?.subtitles != true && sounds.size <= 1) return
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         if (tracks?.subtitles == true) Text("SUB", fontSize = fontSize, color = Palette.TextDim)
         if (sounds.size > 1) {
             if (tracks?.subtitles == true) Spacer(Modifier.width(14.dp))
-            sounds.forEachIndexed { i, l ->
-                if (i > 0) Text(" / ", fontSize = fontSize, color = Palette.TextDim)
-                val on = i == tracks?.selectedAudio
-                Text(
-                    AudioTracks.name(l, i), fontSize = fontSize, color = if (on) Palette.Focus else Palette.TextDim,
-                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                )
+            Row(if (onSound != null) Modifier.pointerClick(onClick = onSound) else Modifier, verticalAlignment = Alignment.CenterVertically) {
+                sounds.forEachIndexed { i, l ->
+                    if (i > 0) Text(" / ", fontSize = fontSize, color = Palette.TextDim)
+                    val on = i == tracks?.selectedAudio
+                    Text(
+                        AudioTracks.name(l, i), fontSize = fontSize, color = if (on) Palette.Focus else Palette.TextDim,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    )
+                }
             }
         }
     }
@@ -687,7 +692,7 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
             Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
             Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp))
+            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), onSound = onSound)
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }

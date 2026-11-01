@@ -12,16 +12,33 @@ class SettingsBackupTest {
     private val mine = Settings(
         favorites = listOf("ch1", "ch2"), hidden = setOf("ch9"), order = listOf("ch2", "ch1"), lastChannel = "ch1",
         fontSize = FontSize.XLARGE, quality = Quality.P720, autostart = true, subtitles = true, genreColors = true, autoCheckUpdates = false,
-        announcedUpdate = "1.20",
+        announcedUpdate = "1.20", audio = mapOf("ch7" to "en"),
     )
 
     @Test fun roundTripKeepsSettingsButNotDeviceState() {
         val text = SettingsBackup.encode(mine, "1.21", 1_000L)
-        val current = Settings(lastChannel = "chX", announcedUpdate = "1.19")
+        // A phone: its own quality, font and no autostart stay.
+        val current = Settings(lastChannel = "chX", announcedUpdate = "1.19", quality = Quality.P360, fontSize = FontSize.MEDIUM, autostart = false)
         val loaded = SettingsBackup.decode(text, current)!!
-        assertEquals(mine.copy(lastChannel = "chX", announcedUpdate = "1.19"), loaded.settings)
+        assertEquals(
+            mine.copy(lastChannel = "chX", announcedUpdate = "1.19", quality = Quality.P360, fontSize = FontSize.MEDIUM, autostart = false),
+            loaded.settings,
+        )
         assertEquals(1_000L, loaded.savedAtMs)
         assertEquals("1.21", loaded.appVersion)
+    }
+
+    @Test fun olderBackupsLoadWithoutTheDeviceSettings() {
+        val text = """{"format":"remotely-settings","version":1,"settings":{"favorites":["ch1"],"fontSize":"XLARGE","quality":"P720","autostart":true}}"""
+        val cur = Settings(quality = Quality.P360)
+        assertEquals(cur.copy(favorites = listOf("ch1")), SettingsBackup.decode(text, cur)!!.settings)
+    }
+
+    @Test fun soundChoicesAreChecked() {
+        val text = """{"format":"remotely-settings","settings":{"audio":{"ch1":"en","ch2":1,"ch3":"","ch4":"${"x".repeat(40)}"," ":"ru"}}}"""
+        assertEquals(mapOf("ch1" to "en"), SettingsBackup.decode(text, Settings())!!.settings.audio)
+        val bad = """{"format":"remotely-settings","settings":{"audio":["en"]}}"""
+        assertEquals(mine.audio, SettingsBackup.decode(bad, mine)!!.settings.audio)
     }
 
     @Test fun serverEncodingIsUndone() {
