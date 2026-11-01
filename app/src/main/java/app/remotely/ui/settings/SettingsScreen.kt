@@ -511,7 +511,7 @@ private fun UpdatesPage(c: AppContainer) {
     }
 }
 
-/** [swatches]: a colour per row, drawn as the stripe the programmes get (the genre legend). */
+/** [swatches]: a colour per row, drawn as the stripe the programmes get (the genre legend); the names stay white, coloured text smears on TVs. */
 private class HelpSection(val title: String, val rows: List<Pair<String, String>>, val swatches: List<Long>? = null)
 
 /** Only what a viewer needs: which key does what. */
@@ -584,9 +584,9 @@ private fun HelpPage() {
                             val swatch = sec.swatches?.getOrNull(r)?.let { Color(it) }
                             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                                 if (swatch != null) {
-                                    Box(Modifier.fillMaxHeight().padding(end = 10.dp).width(4.dp).clip(RoundedCornerShape(2.dp)).background(swatch))
+                                    Box(Modifier.fillMaxHeight().padding(end = 10.dp).width(6.dp).clip(RoundedCornerShape(3.dp)).background(swatch))
                                 }
-                                Text(key, fontSize = 17.sp, color = swatch ?: Palette.Focus, modifier = Modifier.width(if (swatch != null) 186.dp else 200.dp))
+                                Text(key, fontSize = 17.sp, color = if (swatch != null) Palette.Text else Palette.Focus, modifier = Modifier.width(if (swatch != null) 186.dp else 200.dp))
                                 Text(what, fontSize = 17.sp, color = Palette.Text)
                             }
                         }
