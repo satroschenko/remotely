@@ -450,7 +450,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun onEpgFocus(p: Programme) = _ui.update { u -> u.copy(epg = u.epg?.copy(focused = p)) }
 
-    fun canRecord(ch: Channel, p: Programme) = EpgLogic.canPlayRecording(p, ch, c.clock.nowMs(), c.epg.depthMs)
+    fun canRecord(ch: Channel, p: Programme) = EpgLogic.canPlayRecording(p, ch, c.clock.nowMs(), c.epg.depthFor(ch))
 
     fun onEpgSelect(p: Programme) {
         val e = _ui.value.epg ?: return
@@ -546,7 +546,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         val a = _ui.value.archive ?: return
         val ch = _ui.value.current ?: return
         val wall = a.programme.startMs + player.positionMs + deltaMs
-        val tl = ArchiveTimeline(timeline.ifEmpty { listOf(a.programme) }, c.clock.nowMs(), c.epg.depthMs)
+        val tl = ArchiveTimeline(timeline.ifEmpty { listOf(a.programme) }, c.clock.nowMs(), c.epg.depthFor(ch))
         when (val r = tl.resolve(wall)) {
             is TimelinePoint.InProgramme ->
                 if (r.programme.code == a.programme.code && r.programme.startMs == a.programme.startMs) {
@@ -578,7 +578,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             is PlayerEvent.RecordingEnded -> {
                 val p = e.target.programme
                 val now = c.clock.nowMs()
-                val tl = ArchiveTimeline(timeline.ifEmpty { listOf(p) }, now, c.epg.depthMs)
+                val tl = ArchiveTimeline(timeline.ifEmpty { listOf(p) }, now, c.epg.depthFor(e.target.channel))
                 // Zala's recording broke off before the programme did.
                 val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS
                 when (val r = tl.onEnded(p, e.positionMs, e.target.startOffsetMs)) {
@@ -596,7 +596,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val p = e.target.programme
                 // Code 98: the whole channel is blocked (not in the subscription) — the next programme would fail too.
                 val blocked = e.code == "98"
-                val next = if (!blocked && continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthMs).next(p) else null
+                val next = if (!blocked && continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthFor(e.target.channel)).next(p) else null
                 when {
                     blocked -> { toast("Архив этого канала недоступен по подписке"); switchTo(e.target.channel) }
                     next != null -> { toast("«${p.title}» нет в архиве — следующая передача"); playArchive(e.target.channel, next, 0, continued = true) }

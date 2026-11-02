@@ -19,6 +19,15 @@ data class Channel(
     val nowEndMs: Long = 0,
 )
 
+/**
+ * How far back the archive reaches. The portal means it per channel: checked live on Россия-Культура (a day),
+ * neither the timeshift stream nor the recording answers past that, though the portal still authorises them.
+ */
+data class ArchiveDepths(val longestMs: Long, val byMixno: Map<String, Long> = emptyMap()) {
+    /** A channel missing from the portal's answer gets the longest. */
+    fun forChannel(mixno: String): Long = byMixno[mixno] ?: longestMs
+}
+
 /** Portal channel category ("column" under 08), e.g. «Кино», «Спорт». */
 /** A daily break in a channel's broadcast set by Zala, in UTC seconds of the day; [endSec] is its last second. */
 @Serializable

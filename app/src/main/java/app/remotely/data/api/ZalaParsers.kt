@@ -167,12 +167,14 @@ object ZalaParsers {
         }.sortedBy { it.startMs }
     }
 
-    fun archiveDepthMs(body: String): Long {
+    fun archiveDepths(body: String): ArchiveDepths {
         val o = json(body)
         requireOk(o)
         val list = (o["data"] as? JsonObject)?.get("tvodchannellist") as? JsonArray
-        val max = list?.mapNotNull { (it as? JsonObject)?.str("tvodtime")?.toLongOrNull() }?.maxOrNull()
-        return (max ?: 172_800L) * 1000
+        val seconds = list.orEmpty().filterIsInstance<JsonObject>().mapNotNull { c ->
+            c.str("tvodtime").toLongOrNull()?.let { c.str("mixno") to it }
+        }.toMap()
+        return ArchiveDepths((seconds.values.maxOrNull() ?: 172_800L) * 1000, seconds.mapValues { it.value * 1000 })
     }
 
     /** sdk_queryblackout: `[["channelcode|id", "030000|205959,..."], ...]` → channel code → its daily breaks (UTC). */

@@ -2,6 +2,7 @@ package app.remotely.data.repo
 
 import app.remotely.core.Clock
 import app.remotely.core.ZalaTime
+import app.remotely.data.api.ArchiveDepths
 import app.remotely.data.api.Channel
 import app.remotely.data.api.Programme
 import app.remotely.data.api.ZalaApi
@@ -50,11 +51,15 @@ class EpgRepository(
 
     private val mem = HashMap<Pair<String, LocalDate>, Entry>()
     private val lock = Mutex()
-    @Volatile var depthMs: Long = EpgLogic.DEFAULT_DEPTH_MS
-        private set
+    @Volatile private var depths = ArchiveDepths(EpgLogic.DEFAULT_DEPTH_MS)
+
+    /** The longest on any channel: which days the guide offers. */
+    val depthMs: Long get() = depths.longestMs
+
+    fun depthFor(ch: Channel): Long = depths.forChannel(ch.mixno)
 
     suspend fun refreshDepth() {
-        depthMs = runCatching { session.withSession { api.archiveDepthMs(it) } }.getOrDefault(depthMs)
+        depths = runCatching { session.withSession { api.archiveDepths(it) } }.getOrDefault(depths)
     }
 
     fun cachedDay(channelCode: String, day: LocalDate): List<Programme>? = mem[channelCode to day]?.list

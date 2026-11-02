@@ -186,7 +186,7 @@ class ZalaApi(
     suspend fun subscribedNumbers(s: Session): Set<Int> =
         ZalaParsers.subscribedNumbers(get("${s.frameBase}/action/sdk_getsubscribechannel.jsp".toHttpUrl()))
 
-    suspend fun archiveDepthMs(s: Session): Long = ZalaParsers.archiveDepthMs(
+    suspend fun archiveDepths(s: Session): ArchiveDepths = ZalaParsers.archiveDepths(
         get("${s.epgBase}/iptvepg/frame1258/sdk_querytvodtstime.jsp".toHttpUrl().newBuilder()
             .addQueryParameter("terminalflag", C.TERMINAL_FLAG)
             .addQueryParameter("mediaservices", "2")

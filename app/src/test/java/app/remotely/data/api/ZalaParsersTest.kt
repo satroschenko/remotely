@@ -79,7 +79,24 @@ class ZalaParsersTest {
         assertEquals("00000000070072979524", p[1].code)
     }
 
-    @Test fun archiveDepthIsMax() = assertEquals(172_800_000L, ZalaParsers.archiveDepthMs(Fixtures.TVOD_DEPTH))
+    @Test fun archiveDepthIsMax() = assertEquals(172_800_000L, ZalaParsers.archiveDepths(Fixtures.TVOD_DEPTH).longestMs)
+
+    @Test fun archiveDepthPerChannel() {
+        val body = """{"returncode":"0","data":{"tvodchannellist":[{"mixno":"1","tvodtime":"172800"},{"mixno":"2","tvodtime":"86400"},{"mixno":"3","tvodtime":"0"},{"mixno":"4","tvodtime":"x"}]}}"""
+        val d = ZalaParsers.archiveDepths(body)
+        assertEquals(172_800_000L, d.forChannel("1"))
+        assertEquals(86_400_000L, d.forChannel("2"))
+        assertEquals(0L, d.forChannel("3"))
+        // Not in the answer, or an unreadable time: the longest, as before.
+        assertEquals(172_800_000L, d.forChannel("4"))
+        assertEquals(172_800_000L, d.forChannel("99"))
+    }
+
+    @Test fun archiveDepthWithoutAList() {
+        val d = ZalaParsers.archiveDepths("""{"returncode":"0","data":{}}""")
+        assertEquals(172_800_000L, d.longestMs)
+        assertEquals(172_800_000L, d.forChannel("1"))
+    }
 
     @Test fun liveUrlPrefersHttps() {
         assertTrue(ZalaParsers.liveUrl(Fixtures.PLAYURL).contains("AuthInfo=B"))
