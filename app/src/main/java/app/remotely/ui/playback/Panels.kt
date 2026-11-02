@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -754,6 +755,8 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Only on pause: while seeking the eyes are on the picture and the panel already covers enough of it.
+        if (paused && p.description.isNotBlank()) AutoScrollText(p.description, Modifier.heightIn(max = 84.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(ZalaTime.hhmm(shownWall), fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             if (a.seekTargetMs != null) Text("   ${formatDelta(a.seekDeltaMs)}", fontSize = 24.sp, color = Palette.Text)
