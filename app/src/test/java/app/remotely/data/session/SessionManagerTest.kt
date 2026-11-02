@@ -26,11 +26,13 @@ class SessionManagerTest {
     private var now = 1_000_000_000_000L
     private val clock = Clock { now }
     private var logins = 0
+    private var attempts = 0
     private var failWith: Exception? = null
 
     private fun manager(creds: CredentialsSource = FakeCreds()) = SessionManager(
         loginCall = { _, _ ->
             delay(10)
+            attempts++
             failWith?.let { throw it }
             logins++
             Session("e", "f", "T$logins", now + 24 * 3600_000L)
@@ -39,6 +41,55 @@ class SessionManagerTest {
         clock = clock,
         log = EventLog(clock),
     )
+
+    @Test fun refusedPasswordIsNotTriedAgainAutomatically() = runTest {
+        val creds = FakeCreds()
+        val m = manager(creds)
+        failWith = BadCredentialsException("70116206")
+        repeat(4) {
+            val e = runCatching { m.withSession { it.userToken } }.exceptionOrNull()
+            assertEquals("70116206", (e as BadCredentialsException).code)
+        }
+        assertEquals(1, attempts)
+        assertEquals(SessionState.BadCredentials, m.state.value)
+        assertEquals(Credentials("u", "p"), creds.c)
+    }
+
+    @Test fun networkFailureIsStillRetried() = runTest {
+        val m = manager()
+        failWith = java.io.IOException("no route")
+        repeat(3) { runCatching { m.session() } }
+        assertEquals(3, attempts)
+    }
+
+    @Test fun newPasswordFromTheLoginScreenEndsTheStop() = runTest {
+        val m = manager()
+        failWith = BadCredentialsException("70116206")
+        runCatching { m.session() }
+        failWith = null
+        assertEquals("T1", m.loginWith("u", "new").userToken)
+        now += 24 * 3600_000L
+        assertEquals("T2", m.session().userToken)
+    }
+
+    @Test fun refusedNewPasswordOnTheLoginScreenIsReported() = runTest {
+        val m = manager()
+        failWith = BadCredentialsException("70116206")
+        runCatching { m.loginWith("u", "bad") }
+        runCatching { m.loginWith("u", "bad2") }
+        assertEquals(2, attempts)
+    }
+
+    @Test fun logoutEndsTheStop() = runTest {
+        val creds = FakeCreds()
+        val m = manager(creds)
+        failWith = BadCredentialsException("70116206")
+        runCatching { m.session() }
+        m.logout()
+        creds.c = Credentials("u2", "p2")
+        failWith = null
+        assertEquals("T1", m.session().userToken)
+    }
 
     @Test fun concurrentCallersShareOneLogin() = runTest {
         val m = manager()

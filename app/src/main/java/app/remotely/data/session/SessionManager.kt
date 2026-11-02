@@ -45,6 +45,11 @@ class SessionManager(
 ) {
     private val mutex = Mutex()
     private var current: Session? = null
+    /**
+     * The portal refused the saved password (its code): no more automatic attempts until the viewer logs in again
+     * or the app restarts, as repeated wrong logins may lock the account. The password stays saved in case the refusal was the portal's error.
+     */
+    private var refused: String? = null
     private val _state = MutableStateFlow<SessionState>(SessionState.LoggedOut)
     val state: StateFlow<SessionState> = _state
 
@@ -63,7 +68,13 @@ class SessionManager(
             _state.value = SessionState.LoggedOut
             throw NotLoggedInException()
         }
-        return doLogin(c)
+        refused?.let { throw BadCredentialsException(it) }
+        return try {
+            doLogin(c)
+        } catch (e: BadCredentialsException) {
+            refused = e.code
+            throw e
+        }
     }
 
     private suspend fun doLogin(c: Credentials): Session {
@@ -90,6 +101,7 @@ class SessionManager(
     suspend fun loginWith(login: String, password: String): Session = mutex.withLock {
         val c = Credentials(login.trim(), password)
         val s = doLogin(c)
+        refused = null
         credentials.save(c)
         s
     }
@@ -112,6 +124,7 @@ class SessionManager(
 
     suspend fun logout() = mutex.withLock {
         current = null
+        refused = null
         credentials.clear()
         _state.value = SessionState.LoggedOut
         log.add("Выход из аккаунта")
