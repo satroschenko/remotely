@@ -16,8 +16,8 @@ android {
         // Android 7: older TVs (e.g. Витязь 24LH1103) where the official app is too heavy.
         minSdk = 24
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.24"
+        versionCode = 26
+        versionName = "1.25"
     }
 
     // Release signing comes from keystore.properties (git-ignored, created by tools/make-keystore.sh).
