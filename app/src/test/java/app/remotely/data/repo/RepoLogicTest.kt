@@ -15,6 +15,13 @@ class RepoLogicTest {
 
     private val snap = ChannelSnapshot(listOf(ch("c", 3), ch("a", 1), ch("b", 2), ch("x", 9)), setOf(1, 2, 3))
 
+    @Test fun failedOrEmptySubscriptionKeepsWhatWasKnown() {
+        assertEquals(setOf(1, 2), ChannelArranger.subscription(fresh = null, previous = setOf(1, 2)))
+        assertEquals(setOf(1, 2), ChannelArranger.subscription(fresh = emptySet(), previous = setOf(1, 2)))
+        assertEquals(setOf(3), ChannelArranger.subscription(fresh = setOf(3), previous = setOf(1, 2)))
+        assertEquals(emptySet<Int>(), ChannelArranger.subscription(fresh = null, previous = emptySet()))
+    }
+
     @Test fun subscribedSortedByNumber() {
         val l = ChannelArranger.arrange(snap, Settings())
         assertEquals(listOf("a", "b", "c"), l.all.map { it.code })

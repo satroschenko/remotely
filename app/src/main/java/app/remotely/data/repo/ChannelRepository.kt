@@ -2,10 +2,13 @@ package app.remotely.data.repo
 
 import app.remotely.core.EventLog
 import app.remotely.data.api.Channel
+import app.remotely.data.api.Session
+import app.remotely.data.api.SessionLostException
 import app.remotely.data.api.ZalaApi
 import app.remotely.data.session.SessionManager
 import app.remotely.data.store.Settings
 import app.remotely.data.store.SettingsSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -42,6 +45,9 @@ data class ChannelLists(
 }
 
 object ChannelArranger {
+    /** What the portal answered ([fresh], null = the request failed); a failure or an empty answer keeps what was known. */
+    fun subscription(fresh: Set<Int>?, previous: Set<Int>): Set<Int> = fresh?.takeIf { it.isNotEmpty() } ?: previous
+
     fun arrange(snapshot: ChannelSnapshot, s: Settings): ChannelLists {
         val subscribed = snapshot.channels.filter { snapshot.subscribed.isEmpty() || it.number in snapshot.subscribed }
         val pos = s.order.withIndex().associate { it.value to it.index }
@@ -77,12 +83,25 @@ class ChannelRepository(
     }
 
     suspend fun refresh() {
-        val (channels, subscribed) = session.withSession { s -> api.channels(s) to runCatching { api.subscribedNumbers(s) }.getOrDefault(emptySet()) }
+        val (channels, fresh) = session.withSession { s -> api.channels(s) to subscribedOrNull(s) }
         if (channels.isEmpty()) return
+        val subscribed = ChannelArranger.subscription(fresh, snapshot.value.subscribed)
+        if (subscribed != fresh) log.add("Подписка не получена — оставлен прежний список")
         val snap = ChannelSnapshot(channels, subscribed, snapshot.value.groups)
         snapshot.value = snap
         cache.write(FILE, ChannelSnapshot.serializer(), snap)
         log.add("Каналы обновлены: ${channels.size}")
+    }
+
+    /** Null when the request failed; a lost session and cancelling still go up, [SessionManager.withSession] retries the former. */
+    private suspend fun subscribedOrNull(s: Session): Set<Int>? = try {
+        api.subscribedNumbers(s)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: SessionLostException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     /** Categories change rarely and cost a request each, so they are fetched apart from the channel list. */
