@@ -62,8 +62,11 @@ sealed interface PlaybackTarget {
 /** What the server answered 404 for: the whole recording (manifest) or one piece of it. */
 enum class NotFound { MANIFEST, SEGMENT }
 
-/** [BLACKOUT]: Zala's break in the channel's broadcast, the stream is not shown until [PlayerState.blackoutUntilMs]. */
-enum class Phase { IDLE, CONNECTING, PLAYING, RECONNECTING, NO_NETWORK, NEEDS_USER_RETRY, BAD_CREDENTIALS, NOT_LOGGED_IN, BLACKOUT }
+/**
+ * [BLACKOUT]: Zala's break in the channel's broadcast, the stream is not shown until [PlayerState.blackoutUntilMs].
+ * [SLEEPING]: stopped by [SleepTimer]; stays so until the viewer asks ([retry]), the screen is free to go dark.
+ */
+enum class Phase { IDLE, CONNECTING, PLAYING, RECONNECTING, NO_NETWORK, NEEDS_USER_RETRY, BAD_CREDENTIALS, NOT_LOGGED_IN, BLACKOUT, SLEEPING }
 
 data class PlayerState(
     val target: PlaybackTarget? = null,
@@ -156,7 +159,7 @@ class PlayerController(
     fun recheckBlackout(): Boolean {
         val s = _state.value
         val t = s.target as? PlaybackTarget.Live ?: return false
-        if (s.phase == Phase.BLACKOUT || s.phase == Phase.IDLE || blackoutUntil(t.channel) == null) return false
+        if (s.phase == Phase.BLACKOUT || s.phase == Phase.IDLE || s.phase == Phase.SLEEPING || blackoutUntil(t.channel) == null) return false
         open(t, s.phase)
         return true
     }
@@ -306,6 +309,17 @@ class PlayerController(
     }
 
     private fun setPhase(p: Phase) = _state.update { it.copy(phase = p) }
+
+    /** The sleep timer fired, or a long break: no stream, no reconnects, nothing until [retry]. */
+    fun sleep() {
+        val s = _state.value
+        if (s.target == null || s.phase == Phase.SLEEPING) return
+        if (s.target is PlaybackTarget.Archive && engineOnTarget && engine.state == EngineState.READY) archivePositionMs = engine.positionMs
+        log.add("Таймер сна: просмотр остановлен")
+        openJob?.cancel()
+        engine.stop()
+        setPhase(Phase.SLEEPING)
+    }
 
     /** "Повторить" button. */
     fun retry() {

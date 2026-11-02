@@ -23,6 +23,7 @@ object Palette {
     val TextDim = Color(0xFFB0BAC8)
     val Accent = Color(0xFF4FC3F7)
     val Record = Color(0xFFE53935)
+    val OnAir = Color(0xFF34C759)
     val Progress = Color(0xFFFFD54F)
 }
 

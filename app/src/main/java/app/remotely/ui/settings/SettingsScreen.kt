@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.ClickableSurfaceDefaults
 import kotlinx.coroutines.Job
+import app.remotely.player.SleepTimer
 import kotlinx.coroutines.delay
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -235,6 +236,24 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item {
                 Item("Качество видео", s.quality.label) {
                     scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
+                }
+            }
+            item {
+                var changes by remember { mutableStateOf(0) }
+                val left = remember(changes) { c.sleep.label(c.clock.nowMs()) }
+                Item("Таймер сна", left) {
+                    c.sleep.cycle(c.clock.nowMs())
+                    changes++
+                }
+            }
+            item {
+                Item("В перерыв вещания выключать", if (s.breakStopMinutes > 0) "через ${s.breakStopMinutes} мин" else "Нет") {
+                    scope.launch {
+                        c.settings.update {
+                            val all = SleepTimer.BREAK_CHOICES
+                            it.copy(breakStopMinutes = all[(all.indexOf(it.breakStopMinutes) + 1) % all.size])
+                        }
+                    }
                 }
             }
             item {

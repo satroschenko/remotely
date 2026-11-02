@@ -22,6 +22,7 @@ import app.remotely.data.store.SettingsStore
 import app.remotely.data.update.UpdateManager
 import app.remotely.player.ExoEngine
 import app.remotely.player.PlayerController
+import app.remotely.player.SleepTimer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -36,6 +37,7 @@ import java.io.File
 class AppContainer(context: Context) {
     val appScope = MainScope()
     val clock = Clock.System
+    val sleep = SleepTimer()
     val log = EventLog(clock)
 
     private val cookieJar = MemoryCookieJar()

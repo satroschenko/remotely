@@ -16,9 +16,11 @@ import app.remotely.data.store.Settings
 import app.remotely.data.update.UpdateState
 import app.remotely.player.ArchiveTimeline
 import app.remotely.player.AudioTracks
+import app.remotely.player.Phase
 import app.remotely.player.PlaybackTarget
 import app.remotely.player.PlayerEvent
 import app.remotely.player.SeekAccumulator
+import app.remotely.player.SleepAction
 import app.remotely.player.TimelinePoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -41,6 +43,7 @@ sealed interface Dialog {
     data class StartOver(val channel: Channel, val programme: Programme) : Dialog
     data object ExitArchive : Dialog
     data object ExitApp : Dialog
+    data object SleepWarning : Dialog
 }
 
 data class EpgUi(
@@ -122,6 +125,16 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             if (_ui.value.current == null) switchTo(start)
         }
         viewModelScope.launch { player.events.collect(::onPlayerEvent) }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(1_000)
+                when (c.sleep.tick(nowMs(), player.state.value.phase == Phase.BLACKOUT, breakStopMinutes())) {
+                    SleepAction.WARN -> if (_ui.value.dialog == null) _ui.update { it.copy(dialog = Dialog.SleepWarning) }
+                    SleepAction.STOP -> sleepNow()
+                    SleepAction.NONE -> {}
+                }
+            }
+        }
         // Each new version is announced once, with a short toast after the picture has started.
         viewModelScope.launch {
             c.updates.state.collect { s ->
@@ -617,6 +630,19 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun askExit() = _ui.update { it.copy(dialog = Dialog.ExitApp) }
 
     fun dismissDialog() = _ui.update { it.copy(dialog = null) }
+
+    private suspend fun breakStopMinutes() = c.settings.settings.first().breakStopMinutes
+
+    /** «Смотреть ещё» in the sleep warning. */
+    fun extendSleep() {
+        dismissDialog()
+        viewModelScope.launch { c.sleep.extend(nowMs(), breakStopMinutes()) }
+    }
+
+    fun sleepNow() {
+        _ui.update { if (it.dialog == Dialog.SleepWarning) it.copy(dialog = null) else it }
+        player.sleep()
+    }
 
     fun toast(text: String) {
         _ui.update { it.copy(toast = text) }

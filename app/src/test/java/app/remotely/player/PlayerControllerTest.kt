@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -89,6 +90,31 @@ class PlayerControllerTest {
         runCurrent()
         assertEquals(1, engine.opened.size)
         assertEquals(Phase.CONNECTING, c.state.value.phase)
+    }
+
+    @Test fun sleepStopsUntilAskedAndNothingReopens() = runTest {
+        val engine = FakeEngine()
+        val clock = Clock { testScheduler.currentTime }
+        var until: Long? = null
+        val c = PlayerController(engine, FakeStreams(), clock, backgroundScope, EventLog(clock), blackoutUntil = { until })
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        engine.ready()
+        c.sleep()
+        assertEquals(Phase.SLEEPING, c.state.value.phase)
+        val opens = engine.opened.size
+        until = 3600_000
+        assertFalse(c.recheckBlackout())
+        until = null
+        c.onNetworkChanged(false)
+        c.onNetworkChanged(true)
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertEquals(Phase.SLEEPING, c.state.value.phase)
+        assertEquals(opens, engine.opened.size)
+        c.retry()
+        runCurrent()
+        assertEquals(opens + 1, engine.opened.size)
     }
 
     @Test fun breakStartingWhileWatchingStopsTheStream() = runTest {

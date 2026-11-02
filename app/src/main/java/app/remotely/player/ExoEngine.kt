@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -73,6 +74,10 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
             override fun onTracksChanged(tracks: Tracks) {
                 if (subtitles) chooseSubtitles(tracks)
                 onTracks(tracks)
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                _tracks.value = _tracks.value.copy(videoHeight = videoSize.height)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -186,15 +191,24 @@ class ExoEngine(context: Context, httpClient: OkHttpClient) : MediaEngine {
             // No choice yet: Russian, whatever the box's system language (ExoPlayer would follow that).
             AudioTracks.preferred(languages, wantedAudio ?: AudioTracks.DEFAULT_LANGUAGE)?.let { if (!audio[it].isSelected) return selectAudio(it) }
         }
-        _tracks.value = StreamTracks(
+        _tracks.value = _tracks.value.copy(
+            bestHeight = bestHeight(tracks),
             audio = languages,
             selectedAudio = audio.indexOfFirst { it.isSelected }.coerceAtLeast(0),
             subtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT },
         )
     }
 
+    private fun bestHeight(tracks: Tracks): Int {
+        val heights = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }.flatMap { group ->
+            (0 until group.length).filter(group::isTrackSupported).map { group.getTrackFormat(it).height }
+        }.filter { it > 0 }
+        return StreamTracks.bestHeight(heights, maxHeight)
+    }
+
     override fun setMaxHeight(height: Int) {
         maxHeight = height
+        _tracks.value = _tracks.value.copy(bestHeight = bestHeight(player.currentTracks))
         applyTrackLimits()
     }
 

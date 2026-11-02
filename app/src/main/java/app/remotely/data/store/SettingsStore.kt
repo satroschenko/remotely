@@ -37,6 +37,8 @@ data class Settings(
     val autoCheckUpdates: Boolean = true,
     /** The newest version already announced with a toast: each update is announced once. */
     val announcedUpdate: String? = null,
+    /** Stop the picture this many minutes into a broadcast break so the device can fall asleep; 0 = never. */
+    val breakStopMinutes: Int = 0,
 )
 
 interface SettingsSource {

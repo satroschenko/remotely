@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -28,12 +29,13 @@ object SettingsBackup {
     private const val MAX_CODES = 2_000
     private const val MAX_CODE_LENGTH = 64
     private const val MAX_LANGUAGE_LENGTH = 16
+    private const val MAX_MINUTES = 24 * 60
 
     data class Loaded(val settings: Settings, val savedAtMs: Long?, val appVersion: String?)
 
     /**
      * What is the same on every device: favourites, hidden channels, channel order, subtitles, genre colours,
-     * the sound chosen per channel. Quality, font size and autostart belong to the screen and stay on it
+     * the sound chosen per channel, stopping in a broadcast break. Quality, font size and autostart belong to the screen and stay on it
      * (older backups carry them; they are skipped).
      */
     fun encode(s: Settings, appVersion: String, nowMs: Long): String = buildJsonObject {
@@ -49,6 +51,7 @@ object SettingsBackup {
             put("subtitles", s.subtitles)
             put("genreColors", s.genreColors)
             put("autoCheckUpdates", s.autoCheckUpdates)
+            put("breakStopMinutes", s.breakStopMinutes)
         }
     }.toString()
 
@@ -66,6 +69,7 @@ object SettingsBackup {
             subtitles = s.bool("subtitles") ?: current.subtitles,
             genreColors = s.bool("genreColors") ?: current.genreColors,
             autoCheckUpdates = s.bool("autoCheckUpdates") ?: current.autoCheckUpdates,
+            breakStopMinutes = s.minutes("breakStopMinutes") ?: current.breakStopMinutes,
         )
         return Loaded(loaded, (root["savedAt"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }, root.string("app")?.take(20))
     }
@@ -87,6 +91,9 @@ object SettingsBackup {
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     private fun JsonObject.bool(key: String): Boolean? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+
+    private fun JsonObject.minutes(key: String): Int? =
+        (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull?.takeIf { it in 0..MAX_MINUTES }
 
     /** Channel code → language code; anything but short strings is dropped. */
     private fun JsonObject.languages(key: String): Map<String, String>? {

@@ -97,7 +97,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         if (ps.phase == Phase.NOT_LOGGED_IN || ui.needLogin) onNeedLogin()
     }
 
-    val blocking = ps.phase == Phase.NEEDS_USER_RETRY || ps.phase == Phase.BAD_CREDENTIALS || ui.channelsFailed
+    val blocking = ps.phase == Phase.NEEDS_USER_RETRY || ps.phase == Phase.BAD_CREDENTIALS || ps.phase == Phase.SLEEPING || ui.channelsFailed
     val fullscreenKeys = ui.overlay == Overlay.NONE && ui.dialog == null && !blocking
     LaunchedEffect(fullscreenKeys) {
         if (fullscreenKeys) repeat(10) { if (runCatching { rootFocus.requestFocus() }.isSuccess) return@LaunchedEffect; delay(50) }
@@ -183,7 +183,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
         val hideVideo = oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT
         LaunchedEffect(oldChannel) { c.engine.player.volume = if (oldChannel) 0f else 1f }
-        VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo)
+        VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo, keepScreenOn = ps.phase != Phase.SLEEPING)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
         // A click or tap on the video does what OK does; a vertical swipe does what Up/Down do.
         if (fullscreenKeys) {
@@ -278,7 +278,12 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                 // «Выйти» first: it takes the focus, the menu item was already a deliberate choice.
                 listOf("Выйти" to { activity?.finish() }, "Отмена" to vm::dismissDialog),
             )
+            Dialog.SleepWarning -> DialogSpec(
+                "Скоро выключу", "Через минуту просмотр остановится",
+                listOf("Смотреть ещё" to vm::extendSleep, "Выключить сейчас" to vm::sleepNow),
+            )
             null -> when {
+                ps.phase == Phase.SLEEPING -> DialogSpec("Просмотр остановлен", "Нажмите, чтобы смотреть дальше", listOf("Смотреть" to vm::retryPlayer))
                 ui.channelsFailed -> DialogSpec("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))
                 ps.phase == Phase.NEEDS_USER_RETRY -> DialogSpec("Не удаётся подключиться к Zala", "Проверьте интернет и нажмите «Повторить»", listOf("Повторить" to vm::retryPlayer))
                 ps.phase == Phase.BAD_CREDENTIALS -> DialogSpec("Нужна помощь: неверный логин", "Попросите помочь с настройкой", listOf("Настройки" to onOpenSettings))
@@ -348,7 +353,7 @@ private fun BoxScope.Subtitles(exo: Player) {
 
 /** Fullscreen ↔ preview by animating a graphics layer: no relayout, no SurfaceView resize jank. */
 @Composable
-private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
+private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean, keepScreenOn: Boolean) {
     val t by animateFloatAsState(if (preview) 1f else 0f, tween(220, easing = FastOutSlowInEasing), label = "video")
     val alpha by animateFloatAsState(if (hidden) 0f else 1f, tween(if (hidden) 80 else 200), label = "videoAlpha")
     val density = LocalDensity.current
@@ -366,6 +371,7 @@ private fun VideoSurface(exo: Player, preview: Boolean, hidden: Boolean) {
                     subtitleView?.visibility = View.GONE
                 }
             },
+            update = { it.keepScreenOn = keepScreenOn },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {

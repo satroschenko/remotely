@@ -90,4 +90,16 @@ class SettingsBackupTest {
         assertNull(ZalaParsers.userData("""{"returncode":"1","errormsg":""}"""))
         assertNull(ZalaParsers.userData("""{"returncode":"0","datavalue":""}"""))
     }
+
+    @Test fun breakStopTravelsBetweenDevices() {
+        val text = SettingsBackup.encode(Settings(breakStopMinutes = 20), "1.24", 1L)
+        assertEquals(20, SettingsBackup.decode(text, Settings())?.settings?.breakStopMinutes)
+    }
+
+    @Test fun brokenBreakStopKeepsTheCurrentValue() {
+        for (bad in listOf("\"x\"", "-5", "99999", "1.5", "true", "null")) {
+            val text = """{"format":"remotely-settings","settings":{"breakStopMinutes":$bad}}"""
+            assertEquals(bad, 30, SettingsBackup.decode(text, Settings(breakStopMinutes = 30))?.settings?.breakStopMinutes)
+        }
+    }
 }

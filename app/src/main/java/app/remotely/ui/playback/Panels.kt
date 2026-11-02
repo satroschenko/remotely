@@ -468,7 +468,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp), onSound = vm::cycleAudio)
+            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp), quality = tracks?.bestQualityLabel, onSound = vm::cycleAudio)
         }
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
@@ -637,7 +637,10 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
                 if (onAir) ProgressBar(EpgLogic.progress(p.startMs, p.endMs, now), Modifier.fillMaxWidth(0.7f).padding(top = 6.dp))
             }
             when {
-                onAir -> Text("● Сейчас", fontSize = 15.sp, color = Palette.Record)
+                onAir -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PulsingDot(Palette.OnAir)
+                    Text("Сейчас", fontSize = 15.sp, color = Palette.OnAir)
+                }
                 past && recordable -> Text("▶ Архив", fontSize = 15.sp, color = Palette.Accent)
             }
         }
@@ -656,17 +659,19 @@ fun GenreStripe(genre: String?, title: String?) {
 }
 
 /**
- * Small «SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright.
+ * Small «720p   SUB   Русский / Английский» after the channel name: what the stream carries, the track playing bright.
+ * [quality]: at full screen what is on screen; in the list what the channel gives at full screen, as the preview itself is capped at 576p.
  * A tap on the languages switches the sound (phones, TV boxes with a mouse); the remote has ▼ for it.
  */
 @Composable
-fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier, onSound: (() -> Unit)? = null) {
+fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier, quality: String? = null, onSound: (() -> Unit)? = null) {
     val sounds = tracks?.audio.orEmpty()
-    if (tracks?.subtitles != true && sounds.size <= 1) return
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (tracks?.subtitles == true) Text("SUB", fontSize = fontSize, color = Palette.TextDim)
+    val subtitles = tracks?.subtitles == true
+    if (quality == null && !subtitles && sounds.size <= 1) return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (quality != null) Text(quality, fontSize = fontSize, color = Palette.TextDim)
+        if (subtitles) Text("SUB", fontSize = fontSize, color = Palette.TextDim)
         if (sounds.size > 1) {
-            if (tracks?.subtitles == true) Spacer(Modifier.width(14.dp))
             Row(if (onSound != null) Modifier.pointerClick(onClick = onSound) else Modifier, verticalAlignment = Alignment.CenterVertically) {
                 sounds.forEachIndexed { i, l ->
                     if (i > 0) Text(" / ", fontSize = fontSize, color = Palette.TextDim)
@@ -692,7 +697,7 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
             Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
             Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), onSound = onSound)
+            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel, onSound = onSound)
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }
@@ -734,7 +739,7 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(bottomEnd = 8.dp)).background(Color(0x80000000)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RecordDot()
+        PulsingDot(Color(0xFFFF3B30))
         Spacer(Modifier.width(6.dp))
         Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
         Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 14.sp, color = Palette.Text)
@@ -783,16 +788,16 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
     }
 }
 
-/** Bright red dot that slowly pulses: noticeable, but no blinking to tire the eye over a long recording. */
+/** A dot that slowly pulses: noticeable, but no blinking to tire the eye. Drawn, as the glyph «●» came out black on some devices. */
 @Composable
-private fun RecordDot() {
-    val pulse = rememberInfiniteTransition(label = "record")
+private fun PulsingDot(colour: Color) {
+    val pulse = rememberInfiniteTransition(label = "dot")
     val alpha by pulse.animateFloat(
         initialValue = 1f, targetValue = 0.3f,
         animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "recordAlpha",
+        label = "dotAlpha",
     )
-    Box(Modifier.size(11.dp).graphicsLayer { this.alpha = alpha }.clip(CircleShape).background(Color(0xFFFF3B30)))
+    Box(Modifier.size(11.dp).graphicsLayer { this.alpha = alpha }.clip(CircleShape).background(colour))
 }
 
 private fun formatDelta(ms: Long): String {
