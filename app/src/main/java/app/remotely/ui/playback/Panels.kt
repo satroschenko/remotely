@@ -798,9 +798,8 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         // What the recording carries, as on air: quality on screen, subtitles, sound tracks (a tap switches them on a phone).
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            // Zala's archive declares the subtitle track but carries no text in it (checked): no «SUB» here.
             TrackBadges(
-                tracks?.copy(subtitles = false), fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                tracks, fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
                 subtitlesOn = subtitlesOn, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
             )
         }

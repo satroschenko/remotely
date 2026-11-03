@@ -343,6 +343,7 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     Key.DirectionUp, Key.ChannelUp, Key.MediaNext -> { if (down && !repeat) vm.stepProgramme(+1); true }
     Key.DirectionDown, Key.ChannelDown, Key.MediaPrevious -> { if (down && !repeat) vm.stepProgramme(-1); true }
     Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
+    Key.Captions -> { if (down && !repeat) vm.toggleSubtitles(); true }
     else -> false
 }
 
