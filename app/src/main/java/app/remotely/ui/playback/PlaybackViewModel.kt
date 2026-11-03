@@ -1,5 +1,6 @@
 package app.remotely.ui.playback
 
+import app.remotely.data.api.OperatorMessage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
@@ -66,6 +67,8 @@ data class ArchiveUi(
 )
 
 data class PlaybackUi(
+    /** The operator's announcement running across the top, once. */
+    val operatorMessage: OperatorMessage? = null,
     val overlay: Overlay = Overlay.NONE,
     val mode: ListMode? = null,
     /** Category code while [mode] is [ListMode.GROUP]. */
@@ -125,6 +128,15 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             if (_ui.value.current == null) switchTo(start)
         }
         viewModelScope.launch { player.events.collect(::onPlayerEvent) }
+        viewModelScope.launch {
+            // After the first channel has settled: the announcement is not the first thing to read.
+            delay(OPERATOR_MESSAGE_DELAY_MS)
+            val m = runCatching { c.operatorMessages.forStart() }.onFailure { c.log.add("Сообщение оператора: ${it.javaClass.simpleName}") }.getOrNull()
+            if (m != null) {
+                c.log.add("Сообщение оператора: показываю")
+                _ui.update { it.copy(operatorMessage = m) }
+            }
+        }
         viewModelScope.launch {
             while (isActive) {
                 delay(1_000)
@@ -654,6 +666,12 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun dismissDialog() = _ui.update { it.copy(dialog = null) }
 
+    fun operatorMessageDone() {
+        val m = _ui.value.operatorMessage ?: return
+        _ui.update { it.copy(operatorMessage = null) }
+        viewModelScope.launch { c.operatorMessages.shown(m) }
+    }
+
     private suspend fun breakStopMinutes() = c.settings.settings.first().breakStopMinutes
 
     /** «Смотреть ещё» in the sleep warning. */
@@ -691,3 +709,5 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         const val CUT_MARGIN_MS = 60_000L
     }
 }
+
+private const val OPERATOR_MESSAGE_DELAY_MS = 6_000L

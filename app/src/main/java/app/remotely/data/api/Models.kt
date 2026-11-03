@@ -48,6 +48,9 @@ data class Programme(
     val recorded: Boolean,
 )
 
+/** The operator's announcement on the portal (what the official app shows at login); [publishedAtMs] from the file's date. */
+data class OperatorMessage(val text: String, val publishedAtMs: Long?)
+
 data class Session(
     val epgBase: String,
     val frameBase: String,

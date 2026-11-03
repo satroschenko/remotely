@@ -52,6 +52,7 @@ object SettingsBackup {
             put("genreColors", s.genreColors)
             put("autoCheckUpdates", s.autoCheckUpdates)
             put("breakStopMinutes", s.breakStopMinutes)
+            put("operatorMessages", s.operatorMessages)
         }
     }.toString()
 
@@ -70,6 +71,7 @@ object SettingsBackup {
             genreColors = s.bool("genreColors") ?: current.genreColors,
             autoCheckUpdates = s.bool("autoCheckUpdates") ?: current.autoCheckUpdates,
             breakStopMinutes = s.minutes("breakStopMinutes") ?: current.breakStopMinutes,
+            operatorMessages = s.bool("operatorMessages") ?: current.operatorMessages,
         )
         return Loaded(loaded, (root["savedAt"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }, root.string("app")?.take(20))
     }

@@ -230,4 +230,20 @@ object ZalaParsers {
 
     @Suppress("unused")
     private fun JsonElement.asObj() = this as? JsonObject
+
+    private val UNICODE_ESCAPE = Regex("""\\u([0-9a-fA-F]{4})""")
+
+    /**
+     * portal.properties: `Portal_Msg_Ru=...` in UTF-8 (sometimes with `\uXXXX` escapes); blank = no announcement.
+     * [lastModified]: the HTTP header, when the operator last changed the file.
+     */
+    fun operatorMessage(body: String, lastModified: String?): OperatorMessage? {
+        val raw = body.lineSequence().firstOrNull { it.trimStart().startsWith("Portal_Msg_Ru=") }?.substringAfter('=') ?: return null
+        val text = UNICODE_ESCAPE.replace(raw) { it.groupValues[1].toInt(16).toChar().toString() }.trim()
+        if (text.isEmpty()) return null
+        val published = lastModified?.let {
+            runCatching { java.time.ZonedDateTime.parse(it, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() }.getOrNull()
+        }
+        return OperatorMessage(text, published)
+    }
 }

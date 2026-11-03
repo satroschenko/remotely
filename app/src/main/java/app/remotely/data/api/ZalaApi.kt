@@ -223,6 +223,14 @@ class ZalaApi(
         }
     }
 
+    /** The operator's announcement; the file is static, a lost session does not matter for it. */
+    suspend fun operatorMessage(s: Session): OperatorMessage? = withContext(Dispatchers.IO) {
+        client.newCall(Request.Builder().url("${s.frameBase}/portal.properties").build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+            ZalaParsers.operatorMessage(resp.body?.string() ?: "", resp.header("Last-Modified"))
+        }
+    }
+
     /** Recording of a programme (also works for the one on air: manifest ends at "now"). */
     suspend fun archiveUrl(s: Session, ch: Channel, programmeCode: String): String {
         val authId = ZalaParsers.tvodAuthId(get("${s.frameBase}/action/get_authTvodresult.jsp".toHttpUrl().newBuilder()

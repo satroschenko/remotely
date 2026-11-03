@@ -1,5 +1,6 @@
 package app.remotely
 
+import app.remotely.data.repo.OperatorMessageRepository
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.media3.common.util.UnstableApi
@@ -62,6 +63,7 @@ class AppContainer(context: Context) {
     private val cache = DiskCache(File(context.filesDir, "cache"))
     val channels = ChannelRepository(session, api, settings, cache, log)
     val epg = EpgRepository(session, api, clock)
+    val operatorMessages = OperatorMessageRepository(session, api, settings, clock)
     val playback = PlaybackRepository(session, api, clock, log)
 
     val serverSettings = ServerSettings(

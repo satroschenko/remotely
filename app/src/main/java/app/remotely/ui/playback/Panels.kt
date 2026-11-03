@@ -1,5 +1,14 @@
 package app.remotely.ui.playback
 
+import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.border
 import androidx.compose.animation.AnimatedVisibility
@@ -929,4 +938,29 @@ private fun AutoScrollText(text: String, modifier: Modifier) {
         }
     }
     Text(text, fontSize = 15.sp, color = Palette.TextDim, modifier = modifier.verticalScroll(scroll, enabled = false))
+}
+
+/** Slow enough to read for an elderly viewer: about four letters a second at this size. */
+private const val TICKER_DP_PER_S = 70
+
+/** The operator's announcement crossing the top of the screen once, then gone. */
+@Composable
+fun BoxScope.OperatorTicker(text: String, onDone: () -> Unit) {
+    val style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xCC0B0F17)).padding(vertical = 10.dp).clipToBounds()) {
+        val boxPx = constraints.maxWidth.toFloat()
+        val textPx = remember(text) { measurer.measure(text, style, softWrap = false, maxLines = 1).size.width.toFloat() }
+        val x = remember(text) { Animatable(boxPx) }
+        LaunchedEffect(text) {
+            val speed = with(density) { TICKER_DP_PER_S.dp.toPx() }
+            x.animateTo(-textPx, tween(((boxPx + textPx) / speed * 1000).toInt(), easing = LinearEasing))
+            onDone()
+        }
+        Text(
+            text, style = style, maxLines = 1, softWrap = false,
+            modifier = Modifier.wrapContentWidth(align = Alignment.Start, unbounded = true).offset { IntOffset(x.value.roundToInt(), 0) },
+        )
+    }
 }

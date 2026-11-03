@@ -262,6 +262,12 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                 }
             }
             item {
+                Item("Сообщения оператора", if (s.operatorMessages) "Да" else "Нет") {
+                    // Turning them on again shows the current message again from the start.
+                    scope.launch { c.settings.update { it.copy(operatorMessages = !it.operatorMessages, operatorMessageKey = null, operatorMessageShows = 0) } }
+                }
+            }
+            item {
                 Item("Цвет жанров", if (s.genreColors) "Да" else "Нет") {
                     scope.launch { c.settings.update { it.copy(genreColors = !it.genreColors) } }
                 }
