@@ -232,7 +232,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             Box(Modifier.fillMaxSize()) { CompositionLocalProvider(LocalGenreColors provides settings.genreColors) { EpgPanel(vm, epg) } }
         }
 
-        ui.archive?.let { ArchiveOverlay(it, ps.paused, vm) }
+        ui.archive?.let { ArchiveOverlay(it, ps.paused, vm, playingTracks, settings.subtitles) }
         AnimatedNullable(
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),

@@ -773,7 +773,7 @@ fun Banner(
 
 @UnstableApi
 @Composable
-fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel) {
+fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel, tracks: StreamTracks?, subtitlesOn: Boolean) {
     val p = a.programme
     val now = vm.nowMs()
     val duration = (p.endMs - p.startMs).coerceAtLeast(1)
@@ -795,7 +795,14 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // What the recording carries, as on air: quality on screen, subtitles, sound tracks (a tap switches them on a phone).
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            TrackBadges(
+                tracks, fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                subtitlesOn = subtitlesOn, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
+            )
+        }
         // Only on pause: while seeking the eyes are on the picture and the panel already covers enough of it.
         if (paused && p.description.isNotBlank()) AutoScrollText(p.description, Modifier.heightIn(max = 84.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
