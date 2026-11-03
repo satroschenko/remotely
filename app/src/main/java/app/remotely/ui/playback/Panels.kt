@@ -798,8 +798,9 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         // What the recording carries, as on air: quality on screen, subtitles, sound tracks (a tap switches them on a phone).
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            // Zala's archive declares the subtitle track but carries no text in it (checked): no «SUB» here.
             TrackBadges(
-                tracks, fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                tracks?.copy(subtitles = false), fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
                 subtitlesOn = subtitlesOn, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
             )
         }
@@ -854,6 +855,9 @@ private fun ArchivePlate() {
         Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
+
+/** Height of the «АРХИВ» mark in the top corner, so nothing else is drawn over it. */
+val ArchiveMarkHeight = 34.dp
 
 /** A dot that slowly pulses: noticeable, but no blinking to tire the eye. Drawn, as the glyph «●» came out black on some devices. */
 @Composable
@@ -952,11 +956,11 @@ private const val TICKER_DP_PER_S = 70
 
 /** The operator's announcement crossing the top of the screen once, then gone. */
 @Composable
-fun BoxScope.OperatorTicker(text: String, onDone: () -> Unit) {
+fun BoxScope.OperatorTicker(text: String, top: Dp = 0.dp, onDone: () -> Unit) {
     val style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    BoxWithConstraints(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xCC0B0F17)).padding(vertical = 10.dp).clipToBounds()) {
+    BoxWithConstraints(Modifier.align(Alignment.TopCenter).padding(top = top).fillMaxWidth().background(Color(0xCC0B0F17)).padding(vertical = 10.dp).clipToBounds()) {
         val boxPx = constraints.maxWidth.toFloat()
         val textPx = remember(text) { measurer.measure(text, style, softWrap = false, maxLines = 1).size.width.toFloat() }
         val x = remember(text) { Animatable(boxPx) }

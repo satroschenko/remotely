@@ -264,7 +264,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     },
             )
         }
-        ui.operatorMessage?.let { OperatorTicker(it.text, onDone = vm::operatorMessageDone) }
+        // In the archive it runs under the «АРХИВ» mark, which must stay visible.
+        ui.operatorMessage?.let { OperatorTicker(it.text, top = if (ui.archive != null) ArchiveMarkHeight else 0.dp, onDone = vm::operatorMessageDone) }
         StatusPill(ps.phase, ps.target, overPreview = withPanel, blackoutUntilMs = ps.blackoutUntilMs)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
 
@@ -342,7 +343,6 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     Key.DirectionUp, Key.ChannelUp, Key.MediaNext -> { if (down && !repeat) vm.stepProgramme(+1); true }
     Key.DirectionDown, Key.ChannelDown, Key.MediaPrevious -> { if (down && !repeat) vm.stepProgramme(-1); true }
     Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
-    Key.Captions -> { if (down && !repeat) vm.toggleSubtitles(); true }
     else -> false
 }
 
