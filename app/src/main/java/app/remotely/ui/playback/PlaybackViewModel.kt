@@ -285,6 +285,14 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
     }
 
+    /** Subtitles on or off while watching (the same switch as in Настройки, so it is kept). */
+    fun toggleSubtitles() {
+        val on = !settings.value.subtitles
+        viewModelScope.launch { c.settings.update { it.copy(subtitles = on) } }
+        toast(if (on) "Субтитры включены" else "Субтитры выключены")
+        if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
+    }
+
     /** OK in fullscreen: first the programme with its description, OK again opens the channel list. */
     fun onOk() {
         val u = _ui.value
@@ -509,6 +517,21 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         val paused = !player.state.value.paused
         player.setPaused(paused)
         showControls(autoHide = !paused)
+    }
+
+    /** ↑ ↓ in the archive: the next or previous programme, the way they switch channels on air. */
+    fun stepProgramme(direction: Int) {
+        val a = _ui.value.archive ?: return
+        val ch = _ui.value.current ?: return
+        // The guide around the new programme is still loading: wait rather than say there is nothing.
+        if (timeline.none { it.code == a.programme.code && it.startMs == a.programme.startMs }) return
+        val tl = ArchiveTimeline(timeline, c.clock.nowMs(), c.epg.depthFor(ch))
+        val target = if (direction > 0) tl.next(a.programme) else tl.previous(a.programme)
+        when {
+            target != null -> playArchive(ch, target, 0)
+            direction > 0 -> { toast("Дальше — прямой эфир"); switchTo(ch) }
+            else -> toast("Раньше архив не хранит")
+        }
     }
 
     fun seekPress(direction: Int, big: Boolean, isRepeat: Boolean) {

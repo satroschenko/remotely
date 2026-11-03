@@ -34,6 +34,9 @@ class ArchiveTimeline(
 
     fun next(p: Programme): Programme? = list.firstOrNull { it.startMs >= p.endMs && it.startMs < nowMs }
 
+    /** The programme before [p], while the archive still keeps its start. */
+    fun previous(p: Programme): Programme? = list.lastOrNull { it.startMs < p.startMs && it.endMs <= p.startMs && it.startMs >= earliestMs }
+
     /** What to do when a recording opened at [startOffsetMs] ended at [positionMs]. */
     fun onEnded(p: Programme, positionMs: Long, startOffsetMs: Long = 0): TimelinePoint {
         val reached = p.startMs + positionMs

@@ -1,5 +1,7 @@
 package app.remotely.ui.playback
 
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.border
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
@@ -469,7 +471,10 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${vm.lists.value.numberOf(ch)}. ${ch.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            TrackBadges(tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp), quality = tracks?.bestQualityLabel, onSound = vm::cycleAudio)
+            TrackBadges(
+                tracks, fontSize = 16.sp, Modifier.padding(start = 12.dp), quality = tracks?.bestQualityLabel,
+                subtitlesOn = vm.settings.collectAsState().value.subtitles, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
+            )
         }
         FitColumn(Modifier.weight(1f).fillMaxWidth(), spacing = 6.dp) {
             if (loaded.isNotEmpty()) {
@@ -665,13 +670,16 @@ fun GenreStripe(genre: String?, title: String?) {
  * A tap on the languages switches the sound (phones, TV boxes with a mouse); the remote has ▼ for it.
  */
 @Composable
-fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier, quality: String? = null, onSound: (() -> Unit)? = null) {
+fun TrackBadges(
+    tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = Modifier, quality: String? = null,
+    subtitlesOn: Boolean = false, onSound: (() -> Unit)? = null, onSubtitles: (() -> Unit)? = null,
+) {
     val sounds = tracks?.audio.orEmpty()
     val subtitles = tracks?.subtitles == true
     if (quality == null && !subtitles && sounds.size <= 1) return
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         if (quality != null) Text(quality, fontSize = fontSize, color = Palette.TextDim)
-        if (subtitles) Text("SUB", fontSize = fontSize, color = Palette.TextDim)
+        if (subtitles) SubtitlesBadge(subtitlesOn, fontSize, onSubtitles)
         if (sounds.size > 1) {
             Row(if (onSound != null) Modifier.pointerClick(onClick = onSound) else Modifier, verticalAlignment = Alignment.CenterVertically) {
                 sounds.forEachIndexed { i, l ->
@@ -687,8 +695,27 @@ fun TrackBadges(tracks: StreamTracks?, fontSize: TextUnit, modifier: Modifier = 
     }
 }
 
+/**
+ * «SUB» as a drawn plate, so on and off differ even with the system's high-contrast text (it repaints letters, not shapes):
+ * on — a filled bright plate, off — an outline with a dim line through.
+ */
 @Composable
-fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean, tracks: StreamTracks? = null, onSound: () -> Unit = {}) {
+private fun SubtitlesBadge(on: Boolean, fontSize: TextUnit, onClick: (() -> Unit)?) {
+    val shape = RoundedCornerShape(4.dp)
+    val plate = if (on) Modifier.clip(shape).background(Palette.Focus) else Modifier.border(1.5.dp, Palette.TextDim, shape)
+    Text(
+        "SUB", fontSize = fontSize, fontWeight = FontWeight.Bold,
+        color = if (on) Color(0xFF0B0F17) else Palette.TextDim,
+        textDecoration = if (on) null else TextDecoration.LineThrough,
+        modifier = (if (onClick != null) Modifier.pointerClick(onClick = onClick) else Modifier).then(plate).padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+fun Banner(
+    ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean, tracks: StreamTracks? = null,
+    subtitlesOn: Boolean = false, onSound: () -> Unit = {}, onSubtitles: () -> Unit = {},
+) {
     val sounds = tracks?.audio.orEmpty()
     Column(
         Modifier.fillMaxWidth().background(Color(0xDD0B0F17)).padding(horizontal = 40.dp, vertical = 20.dp),
@@ -698,7 +725,10 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
             Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
             Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-            TrackBadges(tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel, onSound = onSound)
+            TrackBadges(
+                tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                subtitlesOn = subtitlesOn, onSound = onSound, onSubtitles = onSubtitles,
+            )
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }
@@ -717,7 +747,11 @@ fun Banner(ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: L
         // At most a third of the screen; the full text is in the programme list (→).
         val description = now?.description?.takeIf { detailed && it.isNotBlank() }
         if (description != null) Text(description, fontSize = 17.sp, color = Palette.Text, maxLines = 5, overflow = TextOverflow.Ellipsis)
-        if (detailed && sounds.size > 1) Text("▼ — сменить звук", fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.pointerClick(onClick = onSound))
+        val hints = listOfNotNull(
+            if (tracks?.subtitles == true) (if (subtitlesOn) "▲ — выключить субтитры" else "▲ — включить субтитры") else null,
+            if (sounds.size > 1) "▼ — сменить звук" else null,
+        )
+        if (detailed && hints.isNotEmpty()) Text(hints.joinToString("    "), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.pointerClick(onClick = onSound))
         next?.let {
             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                 GenreStripe(it.genre, it.title)
@@ -740,9 +774,7 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(bottomEnd = 8.dp)).background(Color(0x80000000)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PulsingDot(Color(0xFFFF3B30))
-        Spacer(Modifier.width(6.dp))
-        Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.Record)
+        ArchivePlate()
         Text("  ·  ${ZalaTime.relativeLabel(shownWall, now)}", fontSize = 14.sp, color = Palette.Text)
     }
     AnimatedVisibility(
@@ -786,8 +818,24 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(p.endMs), fontSize = 16.sp, color = Palette.TextDim)
         }
-        Text("OK — пауза    ← → — 30 сек (держать — быстрее)    ↑ ↓ — 5 мин    Назад — в эфир", fontSize = 14.sp, color = Palette.TextDim)
+        Text("OK — пауза    ← → — перемотка (держать — быстрее)    ↑ ↓ — передача    Назад — в эфир", fontSize = 14.sp, color = Palette.TextDim)
     }
+    }
+}
+
+/**
+ * «АРХИВ» on a red plate with a pulsing white dot: the colour is a drawn shape, so it stays red with the system's
+ * high-contrast text, which turned the red word black.
+ */
+@Composable
+private fun ArchivePlate() {
+    Row(
+        Modifier.clip(RoundedCornerShape(4.dp)).background(Palette.Record).padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PulsingDot(Color.White)
+        Spacer(Modifier.width(6.dp))
+        Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 

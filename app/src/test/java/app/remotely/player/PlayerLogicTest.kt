@@ -76,6 +76,21 @@ class ArchiveTimelineTest {
 
     @Test fun gapJumpsToNextStart() = assertEquals(TimelinePoint.InProgramme(c, 0), tl.resolve(t("15 20:10:00")))
 
+    @Test fun stepsToTheNeighbouringProgrammes() {
+        assertEquals(a, tl.previous(b))
+        assertEquals(b, tl.previous(c)) // across the gap
+        assertEquals(c, tl.next(b))
+        assertEquals(d, tl.next(c)) // on air: plays from its start
+    }
+
+    @Test fun noStepPastTheEnds() {
+        assertEquals(null, tl.previous(a))
+        assertEquals(null, tl.next(d))
+        // Older than the archive keeps: no previous.
+        val shallow = ArchiveTimeline(listOf(a, b), now, 3 * 3600_000L + 30 * 60_000L)
+        assertEquals(null, shallow.previous(b))
+    }
+
     @Test fun nearNowIsLive() {
         assertEquals(TimelinePoint.Live, tl.resolve(now - 10_000))
         assertEquals(TimelinePoint.Live, tl.resolve(now + 3600_000))

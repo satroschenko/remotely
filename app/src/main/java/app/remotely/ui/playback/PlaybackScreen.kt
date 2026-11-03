@@ -147,7 +147,11 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         if (isOk && down) okArmed[0] = true
                         if (isOk && up && !okArmed[0]) return@onPreviewKeyEvent true
                         if (isOk && up) okArmed[0] = false
-                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(vm, ui, ev.key, down, up, repeat, soundChoice = ui.bannerVisible && ui.bannerDetailed && (playingTracks?.audio?.size ?: 0) > 1)
+                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(
+                            vm, ui, ev.key, down, up, repeat,
+                            soundChoice = ui.bannerVisible && ui.bannerDetailed && (playingTracks?.audio?.size ?: 0) > 1,
+                            subtitlesChoice = ui.bannerVisible && ui.bannerDetailed && playingTracks?.subtitles == true,
+                        )
                     }
                 }
             }
@@ -200,7 +204,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         if (abs(dy) >= SWIPE_DP.dp.toPx()) {
                             runCatching { rootFocus.requestFocus() }
                             val up = dy < 0 // finger moves up, like the Up key
-                            if (state.value.ui.archive != null) vm.seekPress(if (up) +1 else -1, true, false)
+                            if (state.value.ui.archive != null) vm.stepProgramme(if (up) +1 else -1)
                             else vm.stepChannel(if (up) +1 else -1)
                         }
                     },
@@ -236,7 +240,10 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ) { ch ->
             Box(Modifier.fillMaxWidth()) {
                 CompositionLocalProvider(LocalGenreColors provides settings.genreColors) {
-                    Banner(ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode }, onSound = vm::cycleAudio)
+                    Banner(
+                        ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode },
+                        subtitlesOn = settings.subtitles, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
+                    )
                 }
             }
         }
@@ -300,9 +307,22 @@ private data class PointerState(val ui: PlaybackUi, val blocking: Boolean, val f
 
 private data class DialogSpec(val title: String, val message: String?, val buttons: List<Pair<String, () -> Unit>>)
 
-/** [soundChoice]: the description is open on a channel with several sound tracks — ▼ switches the sound, ▲ does nothing. */
-private fun liveKeys(vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean, soundChoice: Boolean): Boolean = when (key) {
-    Key.DirectionUp -> { if (down && !soundChoice) vm.stepChannel(+1, repeat); true }
+/**
+ * The description is open: [soundChoice] (several sound tracks) — ▼ switches the sound; [subtitlesChoice] (the channel
+ * declares subtitles) — ▲ turns them on or off. Otherwise ▲ ▼ switch channels.
+ */
+private fun liveKeys(
+    vm: PlaybackViewModel, ui: PlaybackUi, key: Key, down: Boolean, up: Boolean, repeat: Boolean,
+    soundChoice: Boolean, subtitlesChoice: Boolean,
+): Boolean = when (key) {
+    Key.DirectionUp -> {
+        if (down) when {
+            subtitlesChoice -> if (!repeat) vm.toggleSubtitles()
+            !soundChoice -> vm.stepChannel(+1, repeat)
+        }
+        true
+    }
+    Key.Captions -> { if (down && !repeat) vm.toggleSubtitles(); true }
     Key.DirectionDown -> { if (down) { if (soundChoice) { if (!repeat) vm.cycleAudio() } else vm.stepChannel(-1, repeat) }; true }
     Key.ChannelUp -> { if (down) vm.stepChannel(+1, repeat); true }
     Key.ChannelDown -> { if (down) vm.stepChannel(-1, repeat); true }
@@ -318,9 +338,10 @@ private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Bool
     Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> { if (up) vm.togglePause(); true }
     Key.DirectionLeft, Key.MediaRewind -> { if (down) vm.seekPress(-1, false, repeat); true }
     Key.DirectionRight, Key.MediaFastForward -> { if (down) vm.seekPress(+1, false, repeat); true }
-    Key.DirectionUp -> { if (down) vm.seekPress(+1, true, repeat); true }
-    Key.DirectionDown -> { if (down) vm.seekPress(-1, true, repeat); true }
+    Key.DirectionUp, Key.ChannelUp, Key.MediaNext -> { if (down && !repeat) vm.stepProgramme(+1); true }
+    Key.DirectionDown, Key.ChannelDown, Key.MediaPrevious -> { if (down && !repeat) vm.stepProgramme(-1); true }
     Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
+    Key.Captions -> { if (down && !repeat) vm.toggleSubtitles(); true }
     else -> false
 }
 
