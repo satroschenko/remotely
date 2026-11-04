@@ -4,6 +4,7 @@ import android.app.UiModeManager
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -52,6 +53,20 @@ class MainActivity : ComponentActivity() {
             val settings by container.settings.settings.collectAsState(Settings())
             RemotelyTheme(settings.fontSize) { AppRoot(container) }
         }
+    }
+
+    /**
+     * Space on a keyboard is OK, as on a TV with a keyboard and mouse. Only when nothing took the space itself:
+     * in the login fields it still types a space.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (super.dispatchKeyEvent(event)) return true
+        if (event.keyCode != KeyEvent.KEYCODE_SPACE) return false
+        val ok = KeyEvent(
+            event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount,
+            event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
+        )
+        return super.dispatchKeyEvent(ok)
     }
 
     // Back from a dialog, the keyboard or another app the bars may show again.

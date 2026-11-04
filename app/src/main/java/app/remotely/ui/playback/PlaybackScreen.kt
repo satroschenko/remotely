@@ -147,7 +147,11 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                         if (isOk && down) okArmed[0] = true
                         if (isOk && up && !okArmed[0]) return@onPreviewKeyEvent true
                         if (isOk && up) okArmed[0] = false
-                        if (ui.archive != null) archiveKeys(vm, ev.key, down, up, repeat) else liveKeys(
+                        if (ui.archive != null) archiveKeys(
+                            vm, ev.key, down, up, repeat,
+                            soundChoice = ps.paused && (playingTracks?.audio?.size ?: 0) > 1,
+                            subtitlesChoice = ps.paused && playingTracks?.subtitles == true,
+                        ) else liveKeys(
                             vm, ui, ev.key, down, up, repeat,
                             soundChoice = ui.bannerVisible && ui.bannerDetailed && (playingTracks?.audio?.size ?: 0) > 1,
                             subtitlesChoice = ui.bannerVisible && ui.bannerDetailed && playingTracks?.subtitles == true,
@@ -336,12 +340,30 @@ private fun liveKeys(
     else -> false
 }
 
-private fun archiveKeys(vm: PlaybackViewModel, key: Key, down: Boolean, up: Boolean, repeat: Boolean): Boolean = when (key) {
+/**
+ * On pause the description is open, as after OK on air: then ▲ turns subtitles on or off and ▼ switches the sound
+ * ([subtitlesChoice], [soundChoice]). Otherwise ▲ ▼ switch programmes.
+ */
+private fun archiveKeys(
+    vm: PlaybackViewModel, key: Key, down: Boolean, up: Boolean, repeat: Boolean,
+    soundChoice: Boolean, subtitlesChoice: Boolean,
+): Boolean = when (key) {
     Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> { if (up) vm.togglePause(); true }
     Key.DirectionLeft, Key.MediaRewind -> { if (down) vm.seekPress(-1, false, repeat); true }
     Key.DirectionRight, Key.MediaFastForward -> { if (down) vm.seekPress(+1, false, repeat); true }
-    Key.DirectionUp, Key.ChannelUp, Key.MediaNext -> { if (down && !repeat) vm.stepProgramme(+1); true }
-    Key.DirectionDown, Key.ChannelDown, Key.MediaPrevious -> { if (down && !repeat) vm.stepProgramme(-1); true }
+    Key.DirectionUp -> {
+        if (down && !repeat) when {
+            subtitlesChoice -> vm.toggleSubtitles()
+            !soundChoice -> vm.stepProgramme(+1)
+        }
+        true
+    }
+    Key.DirectionDown -> {
+        if (down && !repeat) { if (soundChoice) vm.cycleAudio() else vm.stepProgramme(-1) }
+        true
+    }
+    Key.ChannelUp, Key.MediaNext -> { if (down && !repeat) vm.stepProgramme(+1); true }
+    Key.ChannelDown, Key.MediaPrevious -> { if (down && !repeat) vm.stepProgramme(-1); true }
     Key.MediaAudioTrack -> { if (down && !repeat) vm.cycleAudio(); true }
     Key.Captions -> { if (down && !repeat) vm.toggleSubtitles(); true }
     else -> false

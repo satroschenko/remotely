@@ -382,7 +382,7 @@ private fun ChannelsPage(c: AppContainer) {
     }) {
         Title("Каналы")
         Text(
-            if (moving != null) "Перемещение: ↑ ↓ — двигать канал, OK или Назад — готово" else "OK на канале — избранное, скрыть, переместить",
+            if (moving != null) "Перемещение: ▲ ▼ — двигать канал, OK или Назад — готово" else "OK на канале — избранное, скрыть, переместить",
             fontSize = 18.sp, color = if (moving != null) Palette.Focus else Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
         )
         // Same numbering as the playback list: position among visible channels, updated live while moving.
@@ -539,6 +539,12 @@ private fun UpdatesPage(c: AppContainer) {
 /** [swatches]: a colour per row, drawn as the stripe the programmes get (the genre legend); the names stay white, coloured text smears on TVs. */
 private class HelpSection(val title: String, val rows: List<Pair<String, String>>, val swatches: List<Long>? = null)
 
+/** The genre colours in rainbow order, then pink and grey. Only the legend: [GenreGroup]'s own order decides ties. */
+private val legendOrder = listOf(
+    GenreGroup.MOVIES, GenreGroup.SPORT, GenreGroup.KIDS, GenreGroup.LEARNING,
+    GenreGroup.NEWS, GenreGroup.MUSIC, GenreGroup.SHOWS, GenreGroup.OTHER,
+)
+
 /** Only what a viewer needs: which key does what. */
 private val helpSections = listOf(
     HelpSection("Просмотр", listOf(
@@ -550,15 +556,15 @@ private val helpSections = listOf(
     )),
     HelpSection(
         "Цвет жанров (Настройки → «Цвет жанров»)",
-        GenreGroup.entries.map { it.colour to it.label },
-        swatches = GenreGroup.entries.map { it.argb },
+        legendOrder.map { it.colour to it.label },
+        swatches = legendOrder.map { it.argb },
     ),
     HelpSection("Субтитры и звук", listOf(
         "SUB" to "у канала есть субтитры: жёлтая плашка — включены, перечёркнутая — выключены",
-        "OK, затем ▲" to "включить или выключить субтитры (в описании передачи)",
+        "OK, затем ▲" to "включить или выключить субтитры (в описании передачи, в архиве — на паузе)",
         "Нажать на SUB" to "то же на телефоне; или кнопка субтитров на пульте",
         "Русский / Английский" to "звуковые дорожки канала, играющая выделена",
-        "OK, затем ▼" to "сменить звук (в описании передачи); выбор запоминается",
+        "OK, затем ▼" to "сменить звук (в описании передачи, в архиве — на паузе); выбор запоминается",
         "Нажать на язык" to "сменить звук на телефоне",
         "Кнопка «Аудио»" to "сменить звук, если такая есть на пульте",
     )),
@@ -573,6 +579,7 @@ private val helpSections = listOf(
         "OK" to "пауза; на паузе видно описание передачи",
         "◀ ▶" to "перемотка на 30 секунд (удерживать — быстрее, до 5 минут)",
         "▲ ▼" to "следующая / предыдущая передача",
+        "На паузе ▲ / ▼" to "включить или выключить субтитры / сменить звук",
         "Назад" to "вернуться в прямой эфир",
     )),
     HelpSection("Телефон и планшет", listOf(

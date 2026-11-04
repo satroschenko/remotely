@@ -78,6 +78,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -493,7 +496,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
                 UpcomingRow(ch.nowStartMs, ch.nowEndMs, ch.nowTitle, now)
             }
         }
-        Text("OK — смотреть · удерживать OK — избранное", fontSize = 14.sp, color = Palette.TextDim)
+        KeyHints(listOf("OK" to "смотреть", "Удерживать OK" to "избранное"))
     }
 }
 
@@ -756,18 +759,20 @@ fun Banner(
         // At most a third of the screen; the full text is in the programme list (→).
         val description = now?.description?.takeIf { detailed && it.isNotBlank() }
         if (description != null) Text(description, fontSize = 17.sp, color = Palette.Text, maxLines = 5, overflow = TextOverflow.Ellipsis)
-        val hints = listOfNotNull(
-            if (tracks?.subtitles == true) (if (subtitlesOn) "▲ — выключить субтитры" else "▲ — включить субтитры") else null,
-            if (sounds.size > 1) "▼ — сменить звук" else null,
-        )
-        if (detailed && hints.isNotEmpty()) Text(hints.joinToString("    "), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.pointerClick(onClick = onSound))
         next?.let {
             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                 GenreStripe(it.genre, it.title)
                 Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        Text(if (detailed) "OK — каналы    → — программа передач" else "OK — описание    ← — каналы    → — программа передач", fontSize = 14.sp, color = Palette.TextDim)
+        KeyHints(
+            if (detailed) listOfNotNull(
+                if (tracks?.subtitles == true) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
+                if (sounds.size > 1) "▼" to "сменить звук" else null,
+                "OK" to "каналы",
+                "▶" to "программа передач",
+            ) else listOf("OK" to "описание", "◀" to "каналы", "▶" to "программа передач"),
+        )
     }
 }
 
@@ -834,22 +839,49 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
             Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(p.endMs), fontSize = 16.sp, color = Palette.TextDim)
         }
-        Text("OK — пауза    ← → — перемотка (держать — быстрее)    ↑ ↓ — передача    Назад — в эфир", fontSize = 14.sp, color = Palette.TextDim)
+        // On pause ▲ ▼ are the subtitles and the sound when the recording has them, as in the description on air.
+        val subtitlesChoice = paused && tracks?.subtitles == true
+        val soundChoice = paused && (tracks?.audio?.size ?: 0) > 1
+        KeyHints(listOfNotNull(
+            "OK" to (if (paused) "смотреть" else "пауза"),
+            if (subtitlesChoice) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
+            if (soundChoice) "▼" to "сменить звук" else null,
+            "◀ ▶" to (if (paused) "перемотка" else "перемотка (держать — быстрее)"),
+            if (!subtitlesChoice && !soundChoice) "▲ ▼" to "передача" else null,
+            "Назад" to "в эфир",
+        ))
     }
     }
 }
 
 /**
- * «АРХИВ» on a red plate with a pulsing white dot: the colour is a drawn shape, so it stays red with the system's
- * high-contrast text, which turned the red word black.
+ * Hints at the bottom of a panel on one line, «OK — каналы    ▶ — программа передач»: the keys bold, larger and in
+ * the brand colour, so it is clear at a glance what to press. A line too long for a phone wraps.
+ */
+@Composable
+fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
+    val text = buildAnnotatedString {
+        hints.forEachIndexed { i, (key, what) ->
+            if (i > 0) append("     ")
+            withStyle(SpanStyle(color = Palette.Focus, fontWeight = FontWeight.Bold, fontSize = 18.sp)) { append(key) }
+            append(" — $what")
+        }
+    }
+    Text(text, fontSize = 15.sp, color = Palette.TextDim, modifier = modifier)
+}
+
+/**
+ * «АРХИВ» in a red frame with a pulsing red dot on a dark plate: readable on a bright picture, and the frame and
+ * the dot are drawn shapes, so they stay red with the system's high-contrast text, which turns red words black.
  */
 @Composable
 private fun ArchivePlate() {
+    val shape = RoundedCornerShape(4.dp)
     Row(
-        Modifier.clip(RoundedCornerShape(4.dp)).background(Palette.Record).padding(horizontal = 6.dp, vertical = 2.dp),
+        Modifier.clip(shape).background(Color(0xCC000000)).border(2.dp, Palette.Record, shape).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PulsingDot(Color.White)
+        PulsingDot(Palette.Record)
         Spacer(Modifier.width(6.dp))
         Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
