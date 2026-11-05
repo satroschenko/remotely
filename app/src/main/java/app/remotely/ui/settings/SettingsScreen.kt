@@ -422,7 +422,7 @@ private fun ChannelsPage(c: AppContainer) {
             itemsIndexed(order, key = { _, ch -> ch.code }) { i, ch ->
                 val hidden = ch.code in s.hidden
                 val fav = ch.code in s.favorites
-                val tags = listOfNotNull("★".takeIf { fav }, tr("скрыт", "схаваны", "hidden").takeIf { hidden }, "↕ " + tr("двигается", "рухаецца", "moving").takeIf { moving == ch.code }).joinToString("  ")
+                val tags = listOfNotNull("★".takeIf { fav }, tr("скрыт", "схаваны", "hidden").takeIf { hidden }, ("↕ " + tr("двигается", "рухаецца", "moving")).takeIf { moving == ch.code }).joinToString("  ")
                 val isAnchor = ch.code == anchor || (anchor == null && i == 0)
                 Item(
                     "${numbers[ch.code]?.let { "$it. " } ?: ""}${ch.name}", tags,

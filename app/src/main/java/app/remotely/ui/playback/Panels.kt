@@ -752,12 +752,12 @@ fun Banner(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             Spacer(Modifier.width(16.dp))
-            Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            Text(ch.name, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            // Technical details stay out of the way: small, at the right by the clock.
             TrackBadges(
-                tracks, fontSize = 20.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                tracks, fontSize = 16.sp, Modifier.padding(start = 14.dp, end = 18.dp), quality = tracks?.qualityLabel,
                 subtitlesOn = subtitlesOn, onSound = onSound, onSubtitles = onSubtitles,
             )
-            Spacer(Modifier.weight(1f))
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }
         val title = now?.title ?: ch.nowTitle.takeIf { nowMs < ch.nowEndMs }
