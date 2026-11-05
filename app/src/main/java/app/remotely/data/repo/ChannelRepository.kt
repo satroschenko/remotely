@@ -23,7 +23,19 @@ import kotlinx.serialization.Serializable
 data class GroupSnapshot(val code: String, val name: String, val channels: List<String>)
 
 @Serializable
-data class ChannelSnapshot(val channels: List<Channel>, val subscribed: Set<Int>, val groups: List<GroupSnapshot> = emptyList())
+data class ChannelSnapshot(
+    val channels: List<Channel>,
+    val subscribed: Set<Int>,
+    val groups: List<GroupSnapshot> = emptyList(),
+    /** Category names as the portal gave them per language (`ru`, `be`, `en`): code to name. */
+    val groupNames: Map<String, Map<String, String>> = emptyMap(),
+) {
+    /** The categories with the names of [language] where known, so a new language shows at once. */
+    fun named(language: String): ChannelSnapshot {
+        val names = groupNames[language] ?: return this
+        return copy(groups = groups.map { g -> names[g.code]?.let { g.copy(name = it) } ?: g })
+    }
+}
 
 /** A category as shown in the menu: its channels in the user's order, hidden ones left out. */
 data class ChannelGroup(val code: String, val name: String, val channels: List<Channel>)
@@ -92,7 +104,7 @@ class ChannelRepository(
         if (channels.isEmpty()) return
         val subscribed = ChannelArranger.subscription(fresh, snapshot.value.subscribed)
         if (subscribed != fresh) log.add("Подписка не получена — оставлен прежний список")
-        val snap = ChannelSnapshot(channels, subscribed, snapshot.value.groups)
+        val snap = snapshot.value.copy(channels = channels, subscribed = subscribed)
         snapshot.value = snap
         cache.write(FILE, ChannelSnapshot.serializer(), snap)
         log.add("Каналы обновлены: ${channels.size}")
@@ -110,6 +122,11 @@ class ChannelRepository(
     }
 
     /** Categories change rarely and cost a request each, so they are fetched apart from the channel list. */
+    /** The language changed: category names already known in it show before the portal answers. */
+    fun showLanguage(language: String) {
+        snapshot.value = snapshot.value.named(language)
+    }
+
     suspend fun refreshGroups() {
         val groups = session.withSession { s ->
             coroutineScope {
@@ -117,7 +134,8 @@ class ChannelRepository(
             }
         }.filter { it.channels.isNotEmpty() }
         if (groups.isEmpty()) return
-        val snap = snapshot.value.copy(groups = groups)
+        val names = snapshot.value.groupNames + (api.language to groups.associate { it.code to it.name })
+        val snap = snapshot.value.copy(groups = groups, groupNames = names)
         snapshot.value = snap
         if (snap.channels.isNotEmpty()) cache.write(FILE, ChannelSnapshot.serializer(), snap)
         log.add("Категории обновлены: ${groups.size}")

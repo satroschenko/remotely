@@ -22,6 +22,16 @@ class RepoLogicTest {
         assertEquals(emptySet<Int>(), ChannelArranger.subscription(fresh = null, previous = emptySet()))
     }
 
+    @Test fun categoryNamesOfAKnownLanguageShowAtOnce() {
+        val s = ChannelSnapshot(
+            emptyList(), emptySet(),
+            groups = listOf(GroupSnapshot("1", "Детские", listOf("a")), GroupSnapshot("2", "Спорт", listOf("b"))),
+            groupNames = mapOf("be" to mapOf("1" to "Дзіцячыя")),
+        )
+        assertEquals(listOf("Дзіцячыя", "Спорт"), s.named("be").groups.map { it.name })
+        assertEquals(listOf("Детские", "Спорт"), s.named("en").groups.map { it.name })
+    }
+
     @Test fun dialledNumberIsThePlaceInTheList() {
         val all = listOf(ch("c", 30), ch("a", 10), ch("b", 20))
         val lists = ChannelLists(all, emptyList(), all)

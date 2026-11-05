@@ -102,6 +102,7 @@ class AppContainer(context: Context) {
                 app.remotely.core.Lang.current = lang
                 if (api.language == lang.portal) return@collect
                 api.language = lang.portal
+                channels.showLanguage(lang.portal)
                 runCatching { session.withSession { api.switchLanguage(it) } }
                     .onSuccess { log.add("Язык портала: ${lang.portal}") }
                     .onFailure { log.add("Язык портала: ${it.javaClass.simpleName}") }
