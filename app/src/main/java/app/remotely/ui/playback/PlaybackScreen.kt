@@ -295,7 +295,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             )
             is Dialog.StartOver -> DialogSpec(
                 d.programme.title, tr("Передача идёт сейчас", "Перадача ідзе зараз", "On now"),
-                listOf("Смотреть эфир" to { vm.watchLiveFromDialog(d.channel) }, "⟲ С начала" to { vm.playArchive(d.channel, d.programme, 0) }),
+                listOf(tr("Смотреть эфир", "Глядзець эфір", "Watch live") to { vm.watchLiveFromDialog(d.channel) }, "⟲ " + tr("С начала", "З пачатку", "From the start") to { vm.playArchive(d.channel, d.programme, 0) }),
             )
             Dialog.ExitArchive -> DialogSpec(
                 tr("Вы смотрите передачу из архива", "Вы глядзіце перадачу з архіва", "You are watching a recording"), null,
