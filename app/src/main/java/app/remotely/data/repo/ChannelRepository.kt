@@ -2,6 +2,7 @@ package app.remotely.data.repo
 
 import app.remotely.core.EventLog
 import app.remotely.data.api.Channel
+import app.remotely.data.api.Programme
 import app.remotely.data.api.Session
 import app.remotely.data.api.SessionLostException
 import app.remotely.data.api.ZalaApi
@@ -59,6 +60,16 @@ data class ChannelLists(
 /** A channel number typed on the remote: the numbers follow [ChannelLists.all], 1, 2, 3... */
 object ChannelDial {
     fun channel(all: List<Channel>, typed: String): Channel? = typed.toIntOrNull()?.let { all.getOrNull(it - 1) }
+}
+
+/** Whether what the open list shows as "on now" has run out while it stayed on screen. */
+object ChannelNow {
+    /** Some channel's programme from the channel list has ended: the list is due to be asked again. */
+    fun outdated(channels: List<Channel>, nowMs: Long): Boolean =
+        channels.any { it.nowTitle.isNotBlank() && it.nowEndMs in 1..nowMs }
+
+    /** The first programme under the preview has ended. */
+    fun ended(upcoming: List<Programme>, nowMs: Long): Boolean = upcoming.firstOrNull()?.let { it.endMs <= nowMs } == true
 }
 
 object ChannelArranger {

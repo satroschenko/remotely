@@ -99,6 +99,18 @@ class RepoLogicTest {
         assertEquals(0.5f, EpgLogic.progress(list[1].startMs, list[1].endMs, now), 0.001f)
     }
 
+    @Test fun endedProgrammesAskForFreshOnes() {
+        val ended = ch("a", 1).copy(nowTitle = "Новости", nowStartMs = now - 3600_000, nowEndMs = now)
+        val running = ch("b", 2).copy(nowTitle = "Фильм", nowStartMs = now - 600_000, nowEndMs = now + 600_000)
+        val unknown = ch("c", 3)
+        assertTrue(ChannelNow.outdated(listOf(running, ended), now))
+        assertFalse(ChannelNow.outdated(listOf(running, unknown), now))
+        val list = listOf(p("15 21:00:00", "15 22:00:00"), p("15 22:00:00", "15 23:00:00"))
+        assertTrue(ChannelNow.ended(list, now))
+        assertFalse(ChannelNow.ended(list.drop(1), now))
+        assertFalse(ChannelNow.ended(emptyList(), now))
+    }
+
     @Test fun upcomingStartsWithOnAirAndSkipsDuplicates() {
         val today = listOf(p("15 21:00:00", "15 21:30:00"), p("15 21:30:00", "15 22:30:00"), p("15 23:30:00", "16 00:30:00"), p("15 22:30:00", "15 23:30:00"))
         val tomorrow = listOf(p("15 23:30:00", "16 00:30:00"), p("16 00:30:00", "16 01:00:00")) // crosses midnight: listed in both days

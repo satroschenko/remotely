@@ -116,6 +116,7 @@ import android.os.SystemClock
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -254,7 +255,7 @@ fun BoxScope.ChannelPanel(
     fun requester(index: Int) = requesters.getOrPut(list[index].code) { FocusRequester() }
     val scope = rememberCoroutineScope()
     // Progress bars only need a fresh clock now and then; reading it on every recomposition redraws every row.
-    val now by produceState(vm.nowMs()) { while (true) { delay(30_000); value = vm.nowMs() } }
+    val now = tickingNow(vm)
     val lastMove = remember { longArrayOf(0L) }
 
     fun jumpTo(index: Int) {
@@ -321,6 +322,17 @@ fun BoxScope.ChannelPanel(
 }
 
 private const val LIST_REPEAT_MS = 90L
+
+/**
+ * The clock for progress bars that stay on screen for hours: it moves on now and then by itself. Reading it on every
+ * recomposition instead redraws every row, and freezes when nothing else changes.
+ */
+@UnstableApi
+@Composable
+private fun tickingNow(vm: PlaybackViewModel): Long {
+    val now by produceState(vm.nowMs()) { while (true) { delay(30_000); value = vm.nowMs() } }
+    return now
+}
 
 @Composable
 private fun ChannelRow(
@@ -477,7 +489,7 @@ private fun MenuItem(
 @Composable
 fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTracks? = null) {
     val ch = ui.focused ?: ui.current ?: return
-    val now = vm.nowMs()
+    val now = tickingNow(vm)
     val loaded = ui.focusedUpcoming.filter { it.endMs > now }
     Column(
         Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(1f - CHANNEL_PANEL_FRACTION)
@@ -1016,11 +1028,15 @@ private const val TICKER_DP_PER_S = 70
 
 /** The operator's announcement crossing the top of the screen once, then gone. */
 @Composable
-fun BoxScope.OperatorTicker(text: String, top: Dp = 0.dp, onDone: () -> Unit) {
+fun BoxScope.OperatorTicker(text: String, top: Dp = 0.dp, onBottom: (Dp) -> Unit = {}, onDone: () -> Unit) {
     val style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    BoxWithConstraints(Modifier.align(Alignment.TopCenter).padding(top = top).fillMaxWidth().background(Color(0xCC0B0F17)).padding(vertical = 10.dp).clipToBounds()) {
+    BoxWithConstraints(
+        Modifier.align(Alignment.TopCenter)
+            // Measured with the space above it: where the strip ends, so the app's own messages go under it.
+            .onSizeChanged { onBottom(with(density) { it.height.toDp() }) }
+            .padding(top = top).fillMaxWidth().background(Color(0xCC0B0F17)).padding(vertical = 10.dp).clipToBounds()) {
         val boxPx = constraints.maxWidth.toFloat()
         val textPx = remember(text) { measurer.measure(text, style, softWrap = false, maxLines = 1).size.width.toFloat() }
         val x = remember(text) { Animatable(boxPx) }

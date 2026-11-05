@@ -18,6 +18,7 @@ import app.remotely.data.session.NotLoggedInException
 import app.remotely.data.store.Settings
 import app.remotely.data.update.UpdateState
 import app.remotely.data.repo.ChannelDial
+import app.remotely.data.repo.ChannelNow
 import app.remotely.player.ArchiveTimeline
 import app.remotely.player.AudioTracks
 import app.remotely.player.Phase
@@ -168,6 +169,22 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 delay(30 * 60_000)
                 runCatching { c.channels.refresh() }
                 runCatching { c.channels.refreshGroups() }
+            }
+        }
+        // The open list keeps up with the clock: a programme that has ended gives way to the next one.
+        viewModelScope.launch {
+            var lastRefreshMs = 0L
+            while (isActive) {
+                delay(LIST_CLOCK_MS)
+                val u = _ui.value
+                if (u.overlay != Overlay.LIST && u.overlay != Overlay.MENU) continue
+                val now = nowMs()
+                val f = u.focused
+                if (f != null && ChannelNow.ended(u.focusedUpcoming, now)) loadUpcoming(f)
+                if (ChannelNow.outdated(lists.value.all, now) && now - lastRefreshMs >= LIST_REFRESH_MS) {
+                    lastRefreshMs = now
+                    runCatching { c.channels.refresh() }
+                }
             }
         }
     }
@@ -742,6 +759,10 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         const val DETAILED_BANNER_MS = 10_000L
         /** A recording this much shorter than its programme was cut by the server. */
         const val CUT_MARGIN_MS = 60_000L
+        /** How often the open list looks for programmes that have ended. */
+        const val LIST_CLOCK_MS = 30_000L
+        /** The channel list is asked again at most this often while it shows ended programmes. */
+        const val LIST_REFRESH_MS = 3 * 60_000L
     }
 }
 

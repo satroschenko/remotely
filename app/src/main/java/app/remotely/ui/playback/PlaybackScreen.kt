@@ -278,10 +278,13 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             )
         }
         // In the archive it runs under the «АРХИВ» mark, which must stay visible.
-        ui.operatorMessage?.let { OperatorTicker(it.text, top = if (ui.archive != null) ArchiveMarkHeight else 0.dp, onDone = vm::operatorMessageDone) }
+        var tickerBottom by remember { mutableStateOf(0.dp) }
+        ui.operatorMessage?.let { OperatorTicker(it.text, top = if (ui.archive != null) ArchiveMarkHeight else 0.dp, onBottom = { tickerBottom = it }, onDone = vm::operatorMessageDone) }
+        // The app's messages go under the operator's strip while it runs, not over it.
+        val underTicker = if (ui.operatorMessage != null) tickerBottom else 0.dp
         StatusPill(ps.phase, ps.target, overPreview = withPanel, blackoutUntilMs = ps.blackoutUntilMs)
-        AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
-        AnimatedNullable(ui.dialing, modifier = Modifier.align(Alignment.TopEnd), enter = Motion.fromTop, exit = Motion.toTop) {
+        AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter).padding(top = underTicker), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
+        AnimatedNullable(ui.dialing, modifier = Modifier.align(Alignment.TopEnd).padding(top = underTicker), enter = Motion.fromTop, exit = Motion.toTop) {
             DialNumber(it, ChannelDial.channel(lists.all, it)?.name)
         }
 
