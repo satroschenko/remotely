@@ -15,6 +15,7 @@ import app.remotely.data.repo.EpgLogic
 import app.remotely.data.session.NotLoggedInException
 import app.remotely.data.store.Settings
 import app.remotely.data.update.UpdateState
+import app.remotely.data.repo.ChannelDial
 import app.remotely.player.ArchiveTimeline
 import app.remotely.player.AudioTracks
 import app.remotely.player.Phase
@@ -88,6 +89,8 @@ data class PlaybackUi(
     val archive: ArchiveUi? = null,
     val dialog: Dialog? = null,
     val toast: String? = null,
+    /** Digits typed on the remote so far, «11» on the way to channel 111. */
+    val dialing: String? = null,
     val channelsFailed: Boolean = false,
     val needLogin: Boolean = false,
 )
@@ -293,6 +296,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             c.settings.update { s -> s.copy(audio = if (language == null) s.audio - code else s.audio + (code to language)) }
         }
+        toast("Звук: ${AudioTracks.name(language, next)}")
         // The description stays up while the sound is being chosen.
         if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
     }
@@ -303,6 +307,33 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch { c.settings.update { it.copy(subtitles = on) } }
         toast(if (on) "Субтитры включены" else "Субтитры выключены")
         if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
+    }
+
+    private var dialJob: Job? = null
+
+    /**
+     * A digit key: the number of a channel as the list shows it. It switches as soon as no longer number is possible,
+     * otherwise after a short pause, as on a TV.
+     */
+    fun dialDigit(d: Int) {
+        val count = lists.value.all.size
+        if (count == 0) return
+        val typed = ((_ui.value.dialing ?: "") + d).trimStart('0').ifEmpty { return }
+        _ui.update { it.copy(dialing = typed) }
+        dialJob?.cancel()
+        if (typed.length >= count.toString().length) dialNow()
+        else dialJob = viewModelScope.launch { delay(DIAL_WAIT_MS); dialNow() }
+    }
+
+    private fun dialNow() {
+        val typed = _ui.value.dialing ?: return
+        dialJob?.cancel()
+        _ui.update { it.copy(dialing = null) }
+        val ch = ChannelDial.channel(lists.value.all, typed)
+        if (ch == null) { toast("Канала $typed нет"); return }
+        previewJob?.cancel()
+        _ui.update { it.copy(overlay = Overlay.NONE) }
+        if (ch.code == _ui.value.current?.code && _ui.value.archive == null) showBanner() else switchTo(ch)
     }
 
     /** OK in fullscreen: first the programme with its description, OK again opens the channel list. */
@@ -698,6 +729,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     private companion object {
         const val ZAP_SETTLE_MS = 300L
+        /** Time to type the next digit of a channel number. */
+        const val DIAL_WAIT_MS = 2_000L
         const val ZAP_REPEAT_MS = 250L
         /** The list opens the focused channel once the cursor rests this long. */
         const val PREVIEW_SETTLE_MS = 600L

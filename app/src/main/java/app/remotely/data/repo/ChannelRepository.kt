@@ -44,6 +44,11 @@ data class ChannelLists(
     fun numberOf(ch: Channel): Int = numbers[ch.code] ?: ch.number
 }
 
+/** A channel number typed on the remote: the numbers follow [ChannelLists.all], 1, 2, 3... */
+object ChannelDial {
+    fun channel(all: List<Channel>, typed: String): Channel? = typed.toIntOrNull()?.let { all.getOrNull(it - 1) }
+}
+
 object ChannelArranger {
     /** What the portal answered ([fresh], null = the request failed); a failure or an empty answer keeps what was known. */
     fun subscription(fresh: Set<Int>?, previous: Set<Int>): Set<Int> = fresh?.takeIf { it.isNotEmpty() } ?: previous

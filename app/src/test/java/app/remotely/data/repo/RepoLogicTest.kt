@@ -22,6 +22,16 @@ class RepoLogicTest {
         assertEquals(emptySet<Int>(), ChannelArranger.subscription(fresh = null, previous = emptySet()))
     }
 
+    @Test fun dialledNumberIsThePlaceInTheList() {
+        val all = listOf(ch("c", 30), ch("a", 10), ch("b", 20))
+        val lists = ChannelLists(all, emptyList(), all)
+        assertEquals("a", ChannelDial.channel(all, "2")?.code)
+        assertEquals(2, lists.numberOf(ChannelDial.channel(all, "2")!!))
+        assertEquals("c", ChannelDial.channel(all, "1")?.code)
+        assertEquals(null, ChannelDial.channel(all, "4"))
+        assertEquals(null, ChannelDial.channel(all, "0"))
+    }
+
     @Test fun subscribedSortedByNumber() {
         val l = ChannelArranger.arrange(snap, Settings())
         assertEquals(listOf("a", "b", "c"), l.all.map { it.code })

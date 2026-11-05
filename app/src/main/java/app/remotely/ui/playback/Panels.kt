@@ -35,6 +35,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -78,9 +80,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -655,11 +654,12 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
                 if (onAir) ProgressBar(EpgLogic.progress(p.startMs, p.endMs, now), Modifier.fillMaxWidth(0.7f).padding(top = 6.dp))
             }
             when {
-                onAir -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // In frames: with high-contrast text the words lose their colour, the frames keep it.
+                onAir -> Framed(Palette.OnAir) {
                     PulsingDot(Palette.OnAir)
                     Text("Сейчас", fontSize = 15.sp, color = Palette.OnAir)
                 }
-                past && recordable -> Text("▶ Архив", fontSize = 15.sp, color = Palette.Accent)
+                past && recordable -> Framed(Palette.Accent) { Text("▶ Архив", fontSize = 15.sp, color = Palette.Accent) }
             }
         }
     }
@@ -767,10 +767,10 @@ fun Banner(
         }
         KeyHints(
             if (detailed) listOfNotNull(
-                if (tracks?.subtitles == true) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
-                if (sounds.size > 1) "▼" to "сменить звук" else null,
                 "OK" to "каналы",
                 "▶" to "программа передач",
+                if (sounds.size > 1) "▼" to "сменить звук" else null,
+                if (tracks?.subtitles == true) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
             ) else listOf("OK" to "описание", "◀" to "каналы", "▶" to "программа передач"),
         )
     }
@@ -844,30 +844,43 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         val soundChoice = paused && (tracks?.audio?.size ?: 0) > 1
         KeyHints(listOfNotNull(
             "OK" to (if (paused) "смотреть" else "пауза"),
-            if (subtitlesChoice) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
-            if (soundChoice) "▼" to "сменить звук" else null,
             "◀ ▶" to (if (paused) "перемотка" else "перемотка (держать — быстрее)"),
             if (!subtitlesChoice && !soundChoice) "▲ ▼" to "передача" else null,
             "Назад" to "в эфир",
+            if (soundChoice) "▼" to "сменить звук" else null,
+            if (subtitlesChoice) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
         ))
     }
     }
 }
 
 /**
- * Hints at the bottom of a panel on one line, «OK — каналы    ▶ — программа передач»: the keys bold, larger and in
- * the brand colour, so it is clear at a glance what to press. A line too long for a phone wraps.
+ * Hints at the bottom of a panel on one line, «OK — каналы    ▶ — программа передач»: each key in a frame of the brand
+ * colour, bold, so it is clear at a glance what to press. The frame is a drawn shape and keeps its colour with the
+ * system's high-contrast text, which turns coloured letters black or white. A line too long for a phone wraps.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
-    val text = buildAnnotatedString {
-        hints.forEachIndexed { i, (key, what) ->
-            if (i > 0) append("     ")
-            withStyle(SpanStyle(color = Palette.Focus, fontWeight = FontWeight.Bold, fontSize = 18.sp)) { append(key) }
-            append(" — $what")
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        hints.forEach { (key, what) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Framed(Palette.Focus) { Text(key, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Palette.Focus) }
+                Text(" — $what", fontSize = 15.sp, color = Palette.TextDim)
+            }
         }
     }
-    Text(text, fontSize = 15.sp, color = Palette.TextDim, modifier = modifier)
+}
+
+/** A thin rounded frame in [colour] around a short label: the colour survives high-contrast text. */
+@Composable
+private fun Framed(colour: Color, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(5.dp)
+    Row(
+        Modifier.border(1.5.dp, colour, shape).padding(horizontal = 6.dp, vertical = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) { content() }
 }
 
 /**
@@ -942,6 +955,18 @@ fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean, blacko
             color = Palette.Text,
             modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xCC000000)).padding(horizontal = 32.dp, vertical = 18.dp),
         )
+    }
+}
+
+/** The channel number being typed, large in the top corner, with the name of the channel it would open now. */
+@Composable
+fun DialNumber(typed: String, name: String?) {
+    Column(
+        Modifier.padding(top = 24.dp, end = 32.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xEE1B2533)).padding(horizontal = 28.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.End,
+    ) {
+        Text(typed, fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
+        if (name != null) Text(name, fontSize = 18.sp, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

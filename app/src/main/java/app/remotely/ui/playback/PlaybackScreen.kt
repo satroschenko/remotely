@@ -62,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.tv.material3.Text
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.text.CueGroup
+import app.remotely.data.repo.ChannelDial
 import app.remotely.player.SubtitleChoice
 import androidx.media3.ui.PlayerView
 import app.remotely.AppContainer
@@ -126,6 +127,12 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     return@onPreviewKeyEvent true
                 }
                 if (ui.dialog != null || blocking) return@onPreviewKeyEvent false
+                // Digits on the remote dial a channel by its number in the list, on air, in the archive and over the list.
+                val digit = digitOf(ev.nativeKeyEvent.keyCode)
+                if (digit != null && (ui.overlay == Overlay.NONE || ui.overlay == Overlay.LIST)) {
+                    if (down && !repeat) vm.dialDigit(digit)
+                    return@onPreviewKeyEvent true
+                }
                 when (ui.overlay) {
                     Overlay.LIST -> when (ev.key) {
                         Key.DirectionLeft -> { if (down) vm.openMenu(); true }
@@ -272,6 +279,9 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         ui.operatorMessage?.let { OperatorTicker(it.text, top = if (ui.archive != null) ArchiveMarkHeight else 0.dp, onDone = vm::operatorMessageDone) }
         StatusPill(ps.phase, ps.target, overPreview = withPanel, blackoutUntilMs = ps.blackoutUntilMs)
         AnimatedNullable(ui.toast, modifier = Modifier.align(Alignment.TopCenter), enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
+        AnimatedNullable(ui.dialing, modifier = Modifier.align(Alignment.TopEnd), enter = Motion.fromTop, exit = Motion.toTop) {
+            DialNumber(it, ChannelDial.channel(lists.all, it)?.name)
+        }
 
         val dialog: DialogSpec? = when (val d = ui.dialog) {
             is Dialog.Favorite -> DialogSpec(
@@ -308,6 +318,13 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
 }
 
 private const val SWIPE_DP = 48
+
+/** 0–9 on the remote or a keyboard, the number row and the numeric pad. */
+private fun digitOf(keyCode: Int): Int? = when (keyCode) {
+    in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> keyCode - android.view.KeyEvent.KEYCODE_0
+    in android.view.KeyEvent.KEYCODE_NUMPAD_0..android.view.KeyEvent.KEYCODE_NUMPAD_9 -> keyCode - android.view.KeyEvent.KEYCODE_NUMPAD_0
+    else -> null
+}
 
 private data class PointerState(val ui: PlaybackUi, val blocking: Boolean, val fullscreen: Boolean)
 
