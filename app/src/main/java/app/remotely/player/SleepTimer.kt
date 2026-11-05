@@ -1,5 +1,7 @@
 package app.remotely.player
 
+import app.remotely.core.tr
+
 enum class SleepAction { NONE, WARN, STOP }
 
 /**
@@ -24,7 +26,7 @@ class SleepTimer {
 
     /** «Выкл» or the time left, rounded up. */
     fun label(nowMs: Long): String =
-        timerEndMs?.let { "${((it - nowMs + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1)} мин" } ?: "Выкл"
+        timerEndMs?.let { "${((it - nowMs + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1)} " + tr("мин", "хв", "min") } ?: tr("Выкл", "Выкл", "Off")
 
     /** Once a second. [inBreak]: the channel is in a broadcast break; [breakMinutes]: the setting, 0 = off. */
     fun tick(nowMs: Long, inBreak: Boolean, breakMinutes: Int): SleepAction {

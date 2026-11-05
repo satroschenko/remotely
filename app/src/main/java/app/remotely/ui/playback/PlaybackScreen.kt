@@ -1,5 +1,7 @@
 package app.remotely.ui.playback
 
+import app.remotely.core.tr
+
 import android.view.ViewGroup
 import android.app.Activity
 import android.view.LayoutInflater
@@ -286,30 +288,30 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         val dialog: DialogSpec? = when (val d = ui.dialog) {
             is Dialog.Favorite -> DialogSpec(
                 d.channel.name, null,
-                listOf((if (d.isFavorite) "Убрать из избранного" else "★ Добавить в избранное") to { vm.toggleFavorite(d.channel) }, "Отмена" to vm::dismissDialog),
+                listOf((if (d.isFavorite) tr("Убрать из избранного", "Прыбраць з абранага", "Remove from favourites") else tr("★ Добавить в избранное", "★ Дадаць у абранае", "★ Add to favourites")) to { vm.toggleFavorite(d.channel) }, tr("Отмена", "Скасаваць", "Cancel") to vm::dismissDialog),
             )
             is Dialog.StartOver -> DialogSpec(
-                d.programme.title, "Передача идёт сейчас",
+                d.programme.title, tr("Передача идёт сейчас", "Перадача ідзе зараз", "On now"),
                 listOf("Смотреть эфир" to { vm.watchLiveFromDialog(d.channel) }, "⟲ С начала" to { vm.playArchive(d.channel, d.programme, 0) }),
             )
             Dialog.ExitArchive -> DialogSpec(
-                "Вы смотрите передачу из архива", null,
-                listOf("Вернуться в прямой эфир" to vm::backToLive, "Смотреть дальше" to vm::dismissDialog),
+                tr("Вы смотрите передачу из архива", "Вы глядзіце перадачу з архіва", "You are watching a recording"), null,
+                listOf(tr("Вернуться в прямой эфир", "Вярнуцца ў прамы эфір", "Back to live TV") to vm::backToLive, tr("Смотреть дальше", "Глядзець далей", "Keep watching") to vm::dismissDialog),
             )
             Dialog.ExitApp -> DialogSpec(
-                "Выйти из приложения?", null,
+                tr("Выйти из приложения?", "Выйсці з праграмы?", "Exit the app?"), null,
                 // «Выйти» first: it takes the focus, the menu item was already a deliberate choice.
-                listOf("Выйти" to { activity?.finish() }, "Отмена" to vm::dismissDialog),
+                listOf(tr("Выйти", "Выйсці", "Exit") to { activity?.finish() }, tr("Отмена", "Скасаваць", "Cancel") to vm::dismissDialog),
             )
             Dialog.SleepWarning -> DialogSpec(
-                "Скоро выключу", "Через минуту просмотр остановится",
-                listOf("Смотреть ещё" to vm::extendSleep, "Выключить сейчас" to vm::sleepNow),
+                tr("Скоро выключу", "Хутка выключу", "Turning off soon"), tr("Через минуту просмотр остановится", "Праз хвіліну прагляд спыніцца", "Watching stops in a minute"),
+                listOf(tr("Смотреть ещё", "Глядзець яшчэ", "Keep watching") to vm::extendSleep, tr("Выключить сейчас", "Выключыць зараз", "Turn off now") to vm::sleepNow),
             )
             null -> when {
-                ps.phase == Phase.SLEEPING -> DialogSpec("Просмотр остановлен", "Нажмите, чтобы смотреть дальше", listOf("Смотреть" to vm::retryPlayer))
-                ui.channelsFailed -> DialogSpec("Не удаётся загрузить каналы", "Проверьте интернет", listOf("Повторить" to vm::retryChannels))
-                ps.phase == Phase.NEEDS_USER_RETRY -> DialogSpec("Не удаётся подключиться к Zala", "Проверьте интернет и нажмите «Повторить»", listOf("Повторить" to vm::retryPlayer))
-                ps.phase == Phase.BAD_CREDENTIALS -> DialogSpec("Нужна помощь: неверный логин", "Попросите помочь с настройкой", listOf("Настройки" to onOpenSettings))
+                ps.phase == Phase.SLEEPING -> DialogSpec(tr("Просмотр остановлен", "Прагляд спынены", "Watching stopped"), tr("Нажмите, чтобы смотреть дальше", "Націсніце, каб глядзець далей", "Press to keep watching"), listOf(tr("Смотреть", "Глядзець", "Watch") to vm::retryPlayer))
+                ui.channelsFailed -> DialogSpec(tr("Не удаётся загрузить каналы", "Не атрымліваецца загрузіць каналы", "Cannot load the channels"), tr("Проверьте интернет", "Праверце інтэрнэт", "Check the internet connection"), listOf(tr("Повторить", "Паўтарыць", "Retry") to vm::retryChannels))
+                ps.phase == Phase.NEEDS_USER_RETRY -> DialogSpec(tr("Не удаётся подключиться к Zala", "Не атрымліваецца падключыцца да Zala", "Cannot connect to Zala"), tr("Проверьте интернет и нажмите «Повторить»", "Праверце інтэрнэт і націсніце «Паўтарыць»", "Check the internet connection and press «Retry»"), listOf(tr("Повторить", "Паўтарыць", "Retry") to vm::retryPlayer))
+                ps.phase == Phase.BAD_CREDENTIALS -> DialogSpec(tr("Нужна помощь: неверный логин", "Патрэбна дапамога: няправільны лагін", "Help needed: wrong login"), tr("Попросите помочь с настройкой", "Папрасіце дапамагчы з наладай", "Ask someone to help with the setup"), listOf(tr("Настройки", "Налады", "Settings") to onOpenSettings))
                 else -> null
             }
         }

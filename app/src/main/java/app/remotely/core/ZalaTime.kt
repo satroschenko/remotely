@@ -38,10 +38,10 @@ object ZalaTime {
 
     /** "Сегодня", "Вчера", "Позавчера", "Завтра" or "15.10". */
     fun dayLabel(day: LocalDate, today: LocalDate): String = when (day.toEpochDay() - today.toEpochDay()) {
-        0L -> "Сегодня"
-        -1L -> "Вчера"
-        -2L -> "Позавчера"
-        1L -> "Завтра"
+        0L -> tr("Сегодня", "Сёння", "Today")
+        -1L -> tr("Вчера", "Учора", "Yesterday")
+        -2L -> tr("Позавчера", "Пазаўчора", "2 days ago")
+        1L -> tr("Завтра", "Заўтра", "Tomorrow")
         else -> "%02d.%02d".format(day.dayOfMonth, day.monthValue)
     }
 

@@ -1,5 +1,7 @@
 package app.remotely.data.store
 
+import app.remotely.core.tr
+
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -11,8 +13,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /** Video height cap; the steps Zala streams. MAX keeps its name: it is what older versions stored for 1080p. */
-enum class Quality(val height: Int, val label: String) {
-    AUTO(0, "Авто"), MAX(1080, "1080p"), P720(720, "720p"), P576(576, "576p"), P360(360, "360p");
+enum class Quality(val height: Int) {
+    AUTO(0), MAX(1080), P720(720), P576(576), P360(360);
+
+    val label: String get() = if (this == AUTO) tr("Авто", "Аўта", "Auto") else "${height}p"
 
     fun next(): Quality = entries[(ordinal + 1) % entries.size]
 }
@@ -44,6 +48,8 @@ data class Settings(
     /** Which announcement was shown and how many times, on this device. */
     val operatorMessageKey: String? = null,
     val operatorMessageShows: Int = 0,
+    /** Interface language; also what the portal is asked for (categories, some programmes). */
+    val language: app.remotely.core.AppLanguage = app.remotely.core.AppLanguage.RU,
 )
 
 interface SettingsSource {

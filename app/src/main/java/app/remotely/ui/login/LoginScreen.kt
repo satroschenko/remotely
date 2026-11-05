@@ -1,5 +1,7 @@
 package app.remotely.ui.login
 
+import app.remotely.core.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +57,7 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
     fun submit() {
         if (busy) return
         if (login.isBlank() || password.isEmpty()) {
-            error = "Введите логин и пароль"
+            error = tr("Введите логин и пароль", "Увядзіце лагін і пароль", "Enter your login and password")
             return
         }
         busy = true
@@ -67,9 +69,9 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
                 focusManager.clearFocus(force = true)
                 onLoggedIn()
             } catch (e: BadCredentialsException) {
-                error = "Неверный логин или пароль"
+                error = tr("Неверный логин или пароль", "Няправільны лагін або пароль", "Wrong login or password")
             } catch (e: Exception) {
-                error = "Нет связи с Zala. Проверьте интернет и попробуйте ещё раз."
+                error = tr("Нет связи с Zala. Проверьте интернет и попробуйте ещё раз.", "Няма сувязі з Zala. Праверце інтэрнэт і паспрабуйце яшчэ раз.", "No connection to Zala. Check the internet connection and try again.")
             } finally {
                 busy = false
             }
@@ -78,11 +80,11 @@ fun LoginScreen(session: SessionManager, onLoggedIn: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Palette.Background), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Remotely — вход", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
-            Text("Логин и пароль от SMART ZALA", fontSize = 18.sp, color = Palette.TextDim)
-            Field("Логин", login, { login = it }, false, Modifier.focusRequester(loginFocus))
-            Field("Пароль", password, { password = it }, true, Modifier, onDone = ::submit)
-            BigButton(if (busy) "Вход…" else "Войти", ::submit)
+            Text(tr("Remotely — вход", "Remotely — уваход", "Remotely — sign in"), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            Text(tr("Логин и пароль от SMART ZALA", "Лагін і пароль ад SMART ZALA", "Your SMART ZALA login and password"), fontSize = 18.sp, color = Palette.TextDim)
+            Field(tr("Логин", "Лагін", "Login"), login, { login = it }, false, Modifier.focusRequester(loginFocus))
+            Field(tr("Пароль", "Пароль", "Password"), password, { password = it }, true, Modifier, onDone = ::submit)
+            BigButton(if (busy) tr("Вход…", "Уваход…", "Signing in…") else tr("Войти", "Увайсці", "Sign in"), ::submit)
             error?.let { Text(it, fontSize = 18.sp, color = Palette.Record) }
         }
     }

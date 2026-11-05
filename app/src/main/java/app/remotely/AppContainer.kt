@@ -95,6 +95,20 @@ class AppContainer(context: Context) {
         appScope.launch {
             settings.settings.map { it.subtitles }.distinctUntilChanged().collect { player.setSubtitles(it) }
         }
+        // A new language: the screen follows at once; the portal session switches, then categories and programmes
+        // come again, translated where the portal has them.
+        appScope.launch {
+            settings.settings.map { it.language }.distinctUntilChanged().collect { lang ->
+                app.remotely.core.Lang.current = lang
+                if (api.language == lang.portal) return@collect
+                api.language = lang.portal
+                runCatching { session.withSession { api.switchLanguage(it) } }
+                    .onSuccess { log.add("Язык портала: ${lang.portal}") }
+                    .onFailure { log.add("Язык портала: ${it.javaClass.simpleName}") }
+                epg.clear()
+                runCatching { channels.refreshGroups() }.onFailure { log.add("Категории: ${it.javaClass.simpleName}") }
+            }
+        }
     }
 
     fun onAppStart() {

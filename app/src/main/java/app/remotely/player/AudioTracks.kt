@@ -1,5 +1,7 @@
 package app.remotely.player
 
+import app.remotely.core.tr
+
 /** What the stream on screen carries: its sound tracks (language or null each), subtitles, the height of the picture. */
 data class StreamTracks(
     val audio: List<String?> = emptyList(),
@@ -28,22 +30,27 @@ data class StreamTracks(
 object AudioTracks {
     const val DEFAULT_LANGUAGE = "ru"
 
+    /** Language names: Russian, Belarusian, English. */
+    private val RU = Triple("Русский", "Руская", "Russian")
+    private val EN = Triple("Английский", "Англійская", "English")
+    private val BE = Triple("Белорусский", "Беларуская", "Belarusian")
+    private val UK = Triple("Украинский", "Украінская", "Ukrainian")
+    private val DE = Triple("Немецкий", "Нямецкая", "German")
+    private val FR = Triple("Французский", "Французская", "French")
+    private val ES = Triple("Испанский", "Іспанская", "Spanish")
+    private val IT = Triple("Итальянский", "Італьянская", "Italian")
+    private val PL = Triple("Польский", "Польская", "Polish")
     private val NAMES = mapOf(
-        "ru" to "Русский", "rus" to "Русский",
-        "en" to "Английский", "eng" to "Английский",
-        "be" to "Белорусский", "bel" to "Белорусский",
-        "uk" to "Украинский", "ukr" to "Украинский",
-        "de" to "Немецкий", "deu" to "Немецкий", "ger" to "Немецкий",
-        "fr" to "Французский", "fra" to "Французский", "fre" to "Французский",
-        "es" to "Испанский", "spa" to "Испанский",
-        "it" to "Итальянский", "ita" to "Итальянский",
-        "pl" to "Польский", "pol" to "Польский",
+        "ru" to RU, "rus" to RU, "en" to EN, "eng" to EN, "be" to BE, "bel" to BE, "uk" to UK, "ukr" to UK,
+        "de" to DE, "deu" to DE, "ger" to DE, "fr" to FR, "fra" to FR, "fre" to FR, "es" to ES, "spa" to ES,
+        "it" to IT, "ita" to IT, "pl" to PL, "pol" to PL,
     )
 
     private fun code(lang: String?): String? = lang?.trim()?.lowercase()?.substringBefore('-')?.takeIf { it.isNotEmpty() && it != "und" && it != "un" }
 
     /** «Русский», «English»; an unknown code as it is; no code: «Дорожка 2». */
-    fun name(lang: String?, index: Int): String = code(lang)?.let { NAMES[it] ?: it.uppercase() } ?: "Дорожка ${index + 1}"
+    fun name(lang: String?, index: Int): String =
+        code(lang)?.let { c -> NAMES[c]?.let { tr(it.first, it.second, it.third) } ?: c.uppercase() } ?: tr("Дорожка", "Дарожка", "Track") + " ${index + 1}"
 
     /** For the channel banner: «RU», «EN»; no code: the track number. */
     fun short(lang: String?, index: Int): String = code(lang)?.take(2)?.uppercase() ?: "${index + 1}"

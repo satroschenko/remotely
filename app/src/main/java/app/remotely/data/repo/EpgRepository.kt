@@ -62,6 +62,9 @@ class EpgRepository(
         depths = runCatching { session.withSession { api.archiveDepths(it) } }.getOrDefault(depths)
     }
 
+    /** After the language changed: programmes come again, translated where the portal has them. */
+    suspend fun clear() = lock.withLock { mem.clear() }
+
     fun cachedDay(channelCode: String, day: LocalDate): List<Programme>? = mem[channelCode to day]?.list
 
     suspend fun day(channelCode: String, day: LocalDate): List<Programme> {

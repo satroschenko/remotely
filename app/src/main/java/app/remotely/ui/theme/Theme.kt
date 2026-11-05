@@ -1,5 +1,7 @@
 package app.remotely.ui.theme
 
+import app.remotely.core.tr
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -39,10 +41,16 @@ private val colors = darkColorScheme(
 )
 
 /** Scale applied on top of system font scale; LARGE is the default for parents. Settings cycle through them in this order. */
-enum class FontSize(val scale: Float, val label: String) {
-    MEDIUM(0.85f, "Средний"),
-    LARGE(1.0f, "Крупный"),
-    XLARGE(1.25f, "Очень крупный");
+enum class FontSize(val scale: Float) {
+    MEDIUM(0.85f),
+    LARGE(1.0f),
+    XLARGE(1.25f);
+
+    val label: String get() = when (this) {
+        MEDIUM -> tr("Средний", "Сярэдні", "Medium")
+        LARGE -> tr("Крупный", "Буйны", "Large")
+        XLARGE -> tr("Очень крупный", "Вельмі буйны", "Extra large")
+    }
 
     fun next(): FontSize = entries[(ordinal + 1) % entries.size]
 }

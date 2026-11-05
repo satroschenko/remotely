@@ -1,5 +1,7 @@
 package app.remotely.data.api
 
+import app.remotely.core.tr
+
 import app.remotely.core.ZalaTime
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -237,10 +239,13 @@ object ZalaParsers {
      * portal.properties: `Portal_Msg_Ru=...` in UTF-8 (sometimes with `\uXXXX` escapes); blank = no announcement.
      * [lastModified]: the HTTP header, when the operator last changed the file.
      */
-    fun operatorMessage(body: String, lastModified: String?): OperatorMessage? {
-        val raw = body.lineSequence().firstOrNull { it.trimStart().startsWith("Portal_Msg_Ru=") }?.substringAfter('=') ?: return null
-        val text = UNICODE_ESCAPE.replace(raw) { it.groupValues[1].toInt(16).toChar().toString() }.trim()
-        if (text.isEmpty()) return null
+    fun operatorMessage(body: String, lastModified: String?, language: String = "ru"): OperatorMessage? {
+        fun field(key: String): String? = body.lineSequence().firstOrNull { it.trimStart().startsWith("$key=") }?.substringAfter('=')
+            ?.let { raw -> UNICODE_ESCAPE.replace(raw) { it.groupValues[1].toInt(16).toChar().toString() }.trim() }
+            ?.takeIf { it.isNotEmpty() }
+        val own = when (language) { "be" -> "Portal_Msg_Bel"; "en" -> "Portal_Msg_En"; else -> "Portal_Msg_Ru" }
+        // The operator may leave a language empty: then the Russian text.
+        val text = field(own) ?: field("Portal_Msg_Ru") ?: return null
         val published = lastModified?.let {
             runCatching { java.time.ZonedDateTime.parse(it, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() }.getOrNull()
         }

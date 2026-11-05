@@ -1,5 +1,7 @@
 package app.remotely.ui.playback
 
+import app.remotely.core.tr
+
 import app.remotely.data.api.OperatorMessage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -157,7 +159,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 if (s !is UpdateState.Available || !st.autoCheckUpdates || st.announcedUpdate == s.release.version) return@collect
                 _ui.first { it.current != null }
                 delay(8_000)
-                toast("Доступна версия ${s.release.version}: Меню → Настройки")
+                toast(tr("Доступна версия ${s.release.version}: Меню → Настройки", "Даступная версія ${s.release.version}: Меню → Налады", "Version ${s.release.version} is out: Menu → Settings"))
                 c.settings.update { it.copy(announcedUpdate = s.release.version) }
             }
         }
@@ -226,9 +228,9 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun currentGroup(): String? = if (currentMode() == ListMode.GROUP) _ui.value.group else null
 
     fun listTitle(): String = when (currentMode()) {
-        ListMode.FAVORITES -> "★ Избранное"
-        ListMode.GROUP -> group()?.name ?: "Все каналы"
-        ListMode.ALL -> "Все каналы"
+        ListMode.FAVORITES -> tr("★ Избранное", "★ Абранае", "★ Favourites")
+        ListMode.GROUP -> group()?.name ?: tr("Все каналы", "Усе каналы", "All channels")
+        ListMode.ALL -> tr("Все каналы", "Усе каналы", "All channels")
     }
 
     // ---- live ----
@@ -296,7 +298,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             c.settings.update { s -> s.copy(audio = if (language == null) s.audio - code else s.audio + (code to language)) }
         }
-        toast("Звук: ${AudioTracks.name(language, next)}")
+        toast(tr("Звук", "Гук", "Sound") + ": " + AudioTracks.name(language, next))
         // The description stays up while the sound is being chosen.
         if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
     }
@@ -305,7 +307,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun toggleSubtitles() {
         val on = !settings.value.subtitles
         viewModelScope.launch { c.settings.update { it.copy(subtitles = on) } }
-        toast(if (on) "Субтитры включены" else "Субтитры выключены")
+        toast(if (on) tr("Субтитры включены", "Субтытры ўключаны", "Subtitles on") else tr("Субтитры выключены", "Субтытры выключаны", "Subtitles off"))
         if (_ui.value.bannerVisible && _ui.value.bannerDetailed) showBanner(detailed = true)
     }
 
@@ -330,7 +332,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         dialJob?.cancel()
         _ui.update { it.copy(dialing = null) }
         val ch = ChannelDial.channel(lists.value.all, typed)
-        if (ch == null) { toast("Канала $typed нет"); return }
+        if (ch == null) { toast(tr("Канала $typed нет", "Канала $typed няма", "No channel $typed")); return }
         previewJob?.cancel()
         _ui.update { it.copy(overlay = Overlay.NONE) }
         if (ch.code == _ui.value.current?.code && _ui.value.archive == null) showBanner() else switchTo(ch)
@@ -463,7 +465,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 if (ch.code in it.favorites) it.copy(favorites = it.favorites - ch.code) else it.copy(favorites = it.favorites + ch.code)
             }
             val nowFav = ch.code in settings.value.favorites
-            toast(if (nowFav) "★ ${ch.name} — в избранном" else "${ch.name} убран из избранного")
+            toast(if (nowFav) tr("★ ${ch.name} — в избранном", "★ ${ch.name} — у абраным", "★ ${ch.name} added to favourites") else tr("${ch.name} убран из избранного", "${ch.name} прыбраны з абранага", "${ch.name} removed from favourites"))
         }
     }
 
@@ -507,11 +509,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         val e = _ui.value.epg ?: return
         val now = c.clock.nowMs()
         when {
-            p.startMs > now -> toast("Передача ещё не началась")
+            p.startMs > now -> toast(tr("Передача ещё не началась", "Перадача яшчэ не пачалася", "The programme has not started yet"))
             now < p.endMs -> if (canRecord(e.channel, p)) _ui.update { it.copy(dialog = Dialog.StartOver(e.channel, p)) }
             else { _ui.update { it.copy(overlay = Overlay.NONE, epg = null) }; switchTo(e.channel) }
             canRecord(e.channel, p) -> playArchive(e.channel, p, 0)
-            else -> toast("Нет в архиве")
+            else -> toast(tr("Нет в архиве", "Няма ў архіве", "Not in the archive"))
         }
     }
 
@@ -572,8 +574,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         val target = if (direction > 0) tl.next(a.programme) else tl.previous(a.programme)
         when {
             target != null -> playArchive(ch, target, 0)
-            direction > 0 -> { toast("Дальше — прямой эфир"); switchTo(ch) }
-            else -> toast("Раньше архив не хранит")
+            direction > 0 -> { toast(tr("Дальше — прямой эфир", "Далей — прамы эфір", "Next is live TV")); switchTo(ch) }
+            else -> toast(tr("Раньше архив не хранит", "Раней архіў не захоўвае", "The archive goes no further back"))
         }
     }
 
@@ -622,7 +624,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                     playArchive(ch, r.programme, r.offsetMs, continued = true)
                 }
             TimelinePoint.Live -> {
-                toast("Прямой эфир")
+                toast(tr("Прямой эфир", "Прамы эфір", "Live TV"))
                 switchTo(ch)
             }
         }
@@ -649,11 +651,11 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS
                 when (val r = tl.onEnded(p, e.positionMs, e.target.startOffsetMs)) {
                     is TimelinePoint.InProgramme -> {
-                        if (cut) toast("В архиве обрыв — следующая передача")
+                        if (cut) toast(tr("В архиве обрыв — следующая передача", "У архіве абрыў — наступная перадача", "The recording breaks off — next programme"))
                         playArchive(e.target.channel, r.programme, r.offsetMs, continued = true)
                     }
                     TimelinePoint.Live -> {
-                        if (now - (p.startMs + e.positionMs) > CUT_MARGIN_MS) toast("Дальше архива нет — прямой эфир")
+                        if (now - (p.startMs + e.positionMs) > CUT_MARGIN_MS) toast(tr("Дальше архива нет — прямой эфир", "Далей архіва няма — прамы эфір", "No more recording — live TV"))
                         switchTo(e.target.channel)
                     }
                 }
@@ -664,9 +666,9 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val blocked = e.code == "98"
                 val next = if (!blocked && continuedRecording) ArchiveTimeline(timeline.ifEmpty { listOf(p) }, c.clock.nowMs(), c.epg.depthFor(e.target.channel)).next(p) else null
                 when {
-                    blocked -> { toast("Архив этого канала недоступен по подписке"); switchTo(e.target.channel) }
-                    next != null -> { toast("«${p.title}» нет в архиве — следующая передача"); playArchive(e.target.channel, next, 0, continued = true) }
-                    else -> { toast("Нет в архиве"); switchTo(e.target.channel) }
+                    blocked -> { toast(tr("Архив этого канала недоступен по подписке", "Архіў гэтага канала недаступны па падпісцы", "The archive of this channel is not in your subscription")); switchTo(e.target.channel) }
+                    next != null -> { toast(tr("«${p.title}» нет в архиве — следующая передача", "«${p.title}» няма ў архіве — наступная перадача", "«${p.title}» is not in the archive — next programme")); playArchive(e.target.channel, next, 0, continued = true) }
+                    else -> { toast(tr("Нет в архиве", "Няма ў архіве", "Not in the archive")); switchTo(e.target.channel) }
                 }
             }
         }

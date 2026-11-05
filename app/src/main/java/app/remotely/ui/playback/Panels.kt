@@ -1,5 +1,9 @@
 package app.remotely.ui.playback
 
+import app.remotely.core.Lang
+import app.remotely.core.tr
+import app.remotely.data.repo.GenreNames
+
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -277,13 +281,13 @@ fun BoxScope.ChannelPanel(
         Spacer(Modifier.height(10.dp))
         // Narrow panel: hints get their own line under the title.
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            HintChip("◀", "Меню", arrowFirst = true, onClick = vm::openMenu)
+            HintChip("◀", tr("Меню", "Меню", "Menu"), arrowFirst = true, onClick = vm::openMenu)
             Spacer(Modifier.weight(1f))
-            HintChip("▶", "Программа", arrowFirst = false) { (ui.focused ?: ui.current)?.let(vm::openEpg) }
+            HintChip("▶", tr("Программа", "Праграма", "Guide"), arrowFirst = false) { (ui.focused ?: ui.current)?.let(vm::openEpg) }
         }
         Spacer(Modifier.height(12.dp))
         if (list.isEmpty()) {
-            Text("Загрузка каналов…", fontSize = 26.sp, color = Palette.TextDim, modifier = Modifier.padding(32.dp))
+            Text(tr("Загрузка каналов…", "Загрузка каналаў…", "Loading channels…"), fontSize = 26.sp, color = Palette.TextDim, modifier = Modifier.padding(32.dp))
         }
         SmoothList(
             state, PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 6.dp), 6.dp,
@@ -398,7 +402,7 @@ fun BoxScope.SideMenu(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (groupsOpen) {
-            Text("‹ Категории", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.pointerClick(onClick = vm::closeGroups))
+            Text("‹ " + tr("Категории", "Катэгорыі", "Categories"), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.pointerClick(onClick = vm::closeGroups))
             // Longer than the screen: the page scrolls.
             Column(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
@@ -412,20 +416,20 @@ fun BoxScope.SideMenu(
                 }
             }
         } else {
-            Text("Меню", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            Text(tr("Меню", "Меню", "Menu"), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
-            MenuItem("Все каналы", Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exitItem), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
-            MenuItem("★ Избранное", Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
-                if (vm.lists.value.favorites.isEmpty()) vm.toast("Избранное пусто: удерживайте OK на канале") else vm.selectMode(ListMode.FAVORITES)
+            MenuItem(tr("Все каналы", "Усе каналы", "All channels"), Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exitItem), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
+            MenuItem(tr("★ Избранное", "★ Абранае", "★ Favourites"), Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
+                if (vm.lists.value.favorites.isEmpty()) vm.toast(tr("Избранное пусто: удерживайте OK на канале", "Абранае пустое: утрымлівайце OK на канале", "No favourites yet: hold OK on a channel")) else vm.selectMode(ListMode.FAVORITES)
             }
             if (groups.isNotEmpty()) {
                 // The chosen category is named here, so a short channel list is never a surprise.
-                MenuItem("☰ Категории", Modifier.currentIf(onCategories).onFocusChanged { vm.menuFocus = if (it.isFocused) MENU_CATEGORIES else null }, selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
+                MenuItem("☰ " + tr("Категории", "Катэгорыі", "Categories"), Modifier.currentIf(onCategories).onFocusChanged { vm.menuFocus = if (it.isFocused) MENU_CATEGORIES else null }, selected = mode == ListMode.GROUP, hint = vm.listTitle().takeIf { mode == ListMode.GROUP }, more = true, onClick = vm::openGroups)
             }
             Spacer(Modifier.weight(1f))
             val update by vm.updatePending.collectAsState()
-            MenuItem("⚙ Настройки", hint = "есть обновление".takeIf { update }, onClick = onOpenSettings)
-            MenuItem("✕ Выход", Modifier.focusRequester(exitItem).wrapTo(Key.DirectionDown, top), onClick = onExit)
+            MenuItem("⚙ " + tr("Настройки", "Налады", "Settings"), hint = tr("есть обновление", "ёсць абнаўленне", "update available").takeIf { update }, onClick = onOpenSettings)
+            MenuItem("✕ " + tr("Выход", "Выхад", "Exit"), Modifier.focusRequester(exitItem).wrapTo(Key.DirectionDown, top), onClick = onExit)
         }
     }
     // Also after the "exit?" dialog is cancelled: focus would otherwise stay on the removed button.
@@ -495,7 +499,7 @@ fun BoxScope.PreviewInfo(ui: PlaybackUi, vm: PlaybackViewModel, tracks: StreamTr
                 UpcomingRow(ch.nowStartMs, ch.nowEndMs, ch.nowTitle, now)
             }
         }
-        KeyHints(listOf("OK" to "смотреть", "Удерживать OK" to "избранное"))
+        KeyHints(listOf("OK" to tr("смотреть", "глядзець", "watch"), tr("Удерживать OK", "Утрымліваць OK", "Hold OK") to tr("избранное", "абранае", "favourite")))
     }
 }
 
@@ -572,7 +576,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
     Column(
         Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(CHANNEL_PANEL_FRACTION).clip(PanelShape).background(Palette.PanelSolid).padding(top = 20.dp),
     ) {
-        Text("${vm.lists.value.numberOf(e.channel)}. ${e.channel.name} — программа", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
+        Text("${vm.lists.value.numberOf(e.channel)}. ${e.channel.name} — " + tr("программа", "праграма", "guide"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(12.dp))
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("◀", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (e.dayIndex > 0) Palette.Focus else Palette.TextDim,
@@ -598,8 +602,8 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
         }
         Spacer(Modifier.height(12.dp))
         when {
-            e.loading -> Text("Загрузка…", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
-            e.items.isEmpty() -> Text("Нет программы на этот день", fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
+            e.loading -> Text(tr("Загрузка…", "Загрузка…", "Loading…"), fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
+            e.items.isEmpty() -> Text(tr("Нет программы на этот день", "Няма праграмы на гэты дзень", "No guide for this day"), fontSize = 20.sp, color = Palette.TextDim, modifier = Modifier.padding(24.dp))
         }
         val listAlpha by animateFloatAsState(if (e.loading) 0f else 1f, tween(if (e.loading) 90 else 220), label = "epgList")
         SmoothList(
@@ -621,7 +625,7 @@ fun BoxScope.EpgPanel(vm: PlaybackViewModel, e: EpgUi) {
         Column(Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(top = InfoTop, end = PreviewEnd).width(PreviewWidth), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${ZalaTime.hhmm(p.startMs)}–${ZalaTime.hhmm(p.endMs)}", fontSize = 16.sp, color = Palette.Accent)
             Text(p.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (p.genre.isNotBlank()) Text(p.genre, fontSize = 15.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (p.genre.isNotBlank()) Text(GenreNames.translate(p.genre, Lang.current), fontSize = 15.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (p.description.isNotBlank()) AutoScrollText(p.description, Modifier.weight(1f, fill = false).padding(bottom = 16.dp))
         }
     }
@@ -657,9 +661,9 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
                 // In frames: with high-contrast text the words lose their colour, the frames keep it.
                 onAir -> Framed(Palette.OnAir) {
                     PulsingDot(Palette.OnAir)
-                    Text("Сейчас", fontSize = 15.sp, color = Palette.OnAir)
+                    Text(tr("Сейчас", "Зараз", "Now"), fontSize = 15.sp, color = Palette.OnAir)
                 }
-                past && recordable -> Framed(Palette.Accent) { Text("▶ Архив", fontSize = 15.sp, color = Palette.Accent) }
+                past && recordable -> Framed(Palette.Accent) { Text("▶ " + tr("Архив", "Архіў", "Archive"), fontSize = 15.sp, color = Palette.Accent) }
             }
         }
     }
@@ -762,16 +766,16 @@ fun Banner(
         next?.let {
             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                 GenreStripe(it.genre, it.title)
-                Text("Далее: ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tr("Далее", "Далей", "Next") + ": ${ZalaTime.hhmm(it.startMs)}  ${it.title}", fontSize = 19.sp, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         KeyHints(
             if (detailed) listOfNotNull(
-                "OK" to "каналы",
-                "▶" to "программа передач",
-                if (sounds.size > 1) "▼" to "сменить звук" else null,
-                if (tracks?.subtitles == true) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
-            ) else listOf("OK" to "описание", "◀" to "каналы", "▶" to "программа передач"),
+                "OK" to tr("каналы", "каналы", "channels"),
+                "▶" to tr("программа передач", "праграма перадач", "TV guide"),
+                if (sounds.size > 1) "▼" to tr("сменить звук", "змяніць гук", "change sound") else null,
+                if (tracks?.subtitles == true) "▲" to (if (subtitlesOn) tr("выключить субтитры", "выключыць субтытры", "subtitles off") else tr("включить субтитры", "уключыць субтытры", "subtitles on")) else null,
+            ) else listOf("OK" to tr("описание", "апісанне", "description"), "◀" to tr("каналы", "каналы", "channels"), "▶" to tr("программа передач", "праграма перадач", "TV guide")),
         )
     }
 }
@@ -813,7 +817,7 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(ZalaTime.hhmm(shownWall), fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Palette.Focus)
             if (a.seekTargetMs != null) Text("   ${formatDelta(a.seekDeltaMs)}", fontSize = 24.sp, color = Palette.Text)
-            if (paused) Text("   ❚❚ Пауза", fontSize = 24.sp, color = Palette.Text)
+            if (paused) Text("   ❚❚ " + tr("Пауза", "Паўза", "Paused"), fontSize = 24.sp, color = Palette.Text)
         }
         // Touch: tap or drag the bar to jump within the programme.
         Box(
@@ -843,12 +847,12 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
         val subtitlesChoice = paused && tracks?.subtitles == true
         val soundChoice = paused && (tracks?.audio?.size ?: 0) > 1
         KeyHints(listOfNotNull(
-            "OK" to (if (paused) "смотреть" else "пауза"),
-            "◀ ▶" to (if (paused) "перемотка" else "перемотка (держать — быстрее)"),
-            if (!subtitlesChoice && !soundChoice) "▲ ▼" to "передача" else null,
-            "Назад" to "в эфир",
-            if (soundChoice) "▼" to "сменить звук" else null,
-            if (subtitlesChoice) "▲" to (if (subtitlesOn) "выключить субтитры" else "включить субтитры") else null,
+            "OK" to (if (paused) tr("смотреть", "глядзець", "play") else tr("пауза", "паўза", "pause")),
+            "◀ ▶" to (if (paused) tr("перемотка", "перамотка", "seek") else tr("перемотка (держать — быстрее)", "перамотка (трымаць — хутчэй)", "seek (hold — faster)")),
+            if (!subtitlesChoice && !soundChoice) "▲ ▼" to tr("передача", "перадача", "programme") else null,
+            tr("Назад", "Назад", "Back") to tr("в эфир", "у эфір", "live TV"),
+            if (soundChoice) "▼" to tr("сменить звук", "змяніць гук", "change sound") else null,
+            if (subtitlesChoice) "▲" to (if (subtitlesOn) tr("выключить субтитры", "выключыць субтытры", "subtitles off") else tr("включить субтитры", "уключыць субтытры", "subtitles on")) else null,
         ))
     }
     }
@@ -896,7 +900,7 @@ private fun ArchivePlate() {
     ) {
         PulsingDot(Palette.Record)
         Spacer(Modifier.width(6.dp))
-        Text("АРХИВ", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(tr("АРХИВ", "АРХІЎ", "ARCHIVE"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 
@@ -919,9 +923,9 @@ private fun formatDelta(ms: Long): String {
     val sign = if (ms < 0) "−" else "+"
     val s = kotlin.math.abs(ms) / 1000
     return when {
-        s < 60 -> "$sign$s сек"
-        s % 60 == 0L -> "$sign${s / 60} мин"
-        else -> "$sign${s / 60} мин ${s % 60} сек"
+        s < 60 -> "$sign$s " + tr("сек", "с", "s")
+        s % 60 == 0L -> "$sign${s / 60} " + tr("мин", "хв", "min")
+        else -> "$sign${s / 60} " + tr("мин", "хв", "min") + " ${s % 60} " + tr("сек", "с", "s")
     }
 }
 
@@ -937,10 +941,10 @@ fun BoxScope.StatusPill(phase: Phase, target: Any?, overPreview: Boolean, blacko
         if (phase == Phase.CONNECTING) { delay(SLOW_CONNECT_MS); slow = true }
     }
     val text = when (phase) {
-        Phase.CONNECTING -> "Подключение…".takeIf { slow }
-        Phase.RECONNECTING -> "Восстанавливаем показ…"
-        Phase.NO_NETWORK -> "Нет интернета, ждём…"
-        Phase.BLACKOUT -> "Перерыв в вещании" + (blackoutUntilMs?.let { " до ${ZalaTime.hhmm(it)}" } ?: "")
+        Phase.CONNECTING -> tr("Подключение…", "Падключэнне…", "Connecting…").takeIf { slow }
+        Phase.RECONNECTING -> tr("Восстанавливаем показ…", "Аднаўляем паказ…", "Restoring the picture…")
+        Phase.NO_NETWORK -> tr("Нет интернета, ждём…", "Няма інтэрнэту, чакаем…", "No internet, waiting…")
+        Phase.BLACKOUT -> tr("Перерыв в вещании", "Перапынак у вяшчанні", "Broadcast break") + (blackoutUntilMs?.let { " " + tr("до", "да", "until") + " ${ZalaTime.hhmm(it)}" } ?: "")
         else -> null
     }
     AnimatedNullable(

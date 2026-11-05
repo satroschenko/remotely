@@ -53,6 +53,7 @@ object SettingsBackup {
             put("autoCheckUpdates", s.autoCheckUpdates)
             put("breakStopMinutes", s.breakStopMinutes)
             put("operatorMessages", s.operatorMessages)
+            put("language", s.language.name)
         }
     }.toString()
 
@@ -72,6 +73,7 @@ object SettingsBackup {
             autoCheckUpdates = s.bool("autoCheckUpdates") ?: current.autoCheckUpdates,
             breakStopMinutes = s.minutes("breakStopMinutes") ?: current.breakStopMinutes,
             operatorMessages = s.bool("operatorMessages") ?: current.operatorMessages,
+            language = s.string("language")?.let { n -> app.remotely.core.AppLanguage.entries.firstOrNull { it.name == n } } ?: current.language,
         )
         return Loaded(loaded, (root["savedAt"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }, root.string("app")?.take(20))
     }

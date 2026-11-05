@@ -120,7 +120,7 @@ class ZalaApi(
         get("$frameBase/frameset_builder.html".toHttpUrl().newBuilder()
             .addQueryParameter("islogin", "1")
             .addQueryParameter("userToken", token.token)
-            .addQueryParameter("lan", "ru").build())
+            .addQueryParameter("lan", language).build())
 
         return Session(
             epgBase = epg,
@@ -224,10 +224,21 @@ class ZalaApi(
     }
 
     /** The operator's announcement; the file is static, a lost session does not matter for it. */
+    /** The portal's language for new sessions (`lan`): it translates categories and, on some channels, programmes. */
+    @Volatile var language: String = "ru"
+
+    /** Switch the language of the running session, as the official app does. */
+    suspend fun switchLanguage(s: Session) {
+        get("${s.frameBase}/doSwitchLanguage.jsp".toHttpUrl().newBuilder()
+            .addQueryParameter("lan", language)
+            .addQueryParameter("tempno", "56")
+            .addQueryParameter("fromstart", "1").build())
+    }
+
     suspend fun operatorMessage(s: Session): OperatorMessage? = withContext(Dispatchers.IO) {
         client.newCall(Request.Builder().url("${s.frameBase}/portal.properties").build()).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-            ZalaParsers.operatorMessage(resp.body?.string() ?: "", resp.header("Last-Modified"))
+            ZalaParsers.operatorMessage(resp.body?.string() ?: "", resp.header("Last-Modified"), language)
         }
     }
 

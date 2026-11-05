@@ -1,5 +1,7 @@
 package app.remotely.ui.settings
 
+import app.remotely.core.tr
+
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
@@ -214,40 +216,46 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         when {
             confirmLogout -> LogoutDialog(c, onLoggedOut) { confirmLogout = false }
             confirmLoad -> MessageDialog(
-                "Загрузить настройки с сервера?", "Избранное, порядок каналов и настройки заменятся сохранёнными",
-                listOf("Загрузить" to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, "Отмена" to ::closeServerDialog),
+                tr("Загрузить настройки с сервера?", "Загрузіць налады з сервера?", "Load the settings from the server?"), tr("Избранное, порядок каналов и настройки заменятся сохранёнными", "Абранае, парадак каналаў і налады заменяцца захаванымі", "Favourites, channel order and settings will be replaced with the saved ones"),
+                listOf(tr("Загрузить", "Загрузіць", "Load") to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, tr("Отмена", "Скасаваць", "Cancel") to ::closeServerDialog),
             )
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             AnimatedNullable(serverToast, enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
         }
     }) {
-        Title("Настройки")
+        Title(tr("Настройки", "Налады", "Settings"))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-            item { Item("← Вернуться к просмотру", modifier = Modifier.focusRequester(first), onClick = onBack) }
-            item { Item("Как пользоваться / наш сайт", modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
-            item { Item("Обновления", newVersion?.let { "есть версия $it" } ?: "версия ${BuildConfig.VERSION_NAME}", Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
-            item { Item("Каналы: скрыть, избранное, порядок", modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
+            item { Item("← " + tr("Вернуться к просмотру", "Вярнуцца да прагляду", "Back to watching"), modifier = Modifier.focusRequester(first), onClick = onBack) }
+            item { Item(tr("Как пользоваться / наш сайт", "Як карыстацца / наш сайт", "How to use / our website"), modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
+            item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
+            item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
             item {
-                Item("Размер шрифта", s.fontSize.label) {
+                // In all three languages, so whoever switched it by mistake finds the way back.
+                Item("Язык / Мова / Language", s.language.label) {
+                    scope.launch { c.settings.update { it.copy(language = it.language.next()) } }
+                }
+            }
+            item {
+                Item(tr("Размер шрифта", "Памер шрыфта", "Text size"), s.fontSize.label) {
                     scope.launch { c.settings.update { it.copy(fontSize = it.fontSize.next()) } }
                 }
             }
             item {
-                Item("Качество видео", s.quality.label) {
+                Item(tr("Качество видео", "Якасць відэа", "Video quality"), s.quality.label) {
                     scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
                 }
             }
             item {
                 var changes by remember { mutableStateOf(0) }
                 val left = remember(changes) { c.sleep.label(c.clock.nowMs()) }
-                Item("Таймер сна", left) {
+                Item(tr("Таймер сна", "Таймер сну", "Sleep timer"), left) {
                     c.sleep.cycle(c.clock.nowMs())
                     changes++
                 }
             }
             item {
-                Item("В перерыв вещания выключать", if (s.breakStopMinutes > 0) "через ${s.breakStopMinutes} мин" else "Нет") {
+                Item(tr("В перерыв вещания выключать", "У перапынак вяшчання выключаць", "Turn off in a broadcast break"), if (s.breakStopMinutes > 0) tr("через ${s.breakStopMinutes} мин", "праз ${s.breakStopMinutes} хв", "after ${s.breakStopMinutes} min") else yesNo(false)) {
                     scope.launch {
                         c.settings.update {
                             val all = SleepTimer.BREAK_CHOICES
@@ -257,23 +265,23 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                 }
             }
             item {
-                Item("Субтитры (где есть)", if (s.subtitles) "Да" else "Нет") {
+                Item(tr("Субтитры (где есть)", "Субтытры (дзе ёсць)", "Subtitles (where available)"), yesNo(s.subtitles)) {
                     scope.launch { c.settings.update { it.copy(subtitles = !it.subtitles) } }
                 }
             }
             item {
-                Item("Сообщения оператора", if (s.operatorMessages) "Да" else "Нет") {
+                Item(tr("Сообщения оператора", "Паведамленні аператара", "Operator announcements"), yesNo(s.operatorMessages)) {
                     // Turning them on again shows the current message again from the start.
                     scope.launch { c.settings.update { it.copy(operatorMessages = !it.operatorMessages, operatorMessageKey = null, operatorMessageShows = 0) } }
                 }
             }
             item {
-                Item("Цвет жанров", if (s.genreColors) "Да" else "Нет") {
+                Item(tr("Цвет жанров", "Колер жанраў", "Genre colours"), yesNo(s.genreColors)) {
                     scope.launch { c.settings.update { it.copy(genreColors = !it.genreColors) } }
                 }
             }
             item {
-                Item("Запускать при включении приставки", if (s.autostart) "Да" else "Нет") {
+                Item(tr("Запускать при включении приставки", "Запускаць пры ўключэнні прыстаўкі", "Start when the box turns on"), yesNo(s.autostart)) {
                     val enable = !s.autostart
                     scope.launch { c.settings.update { it.copy(autostart = enable) } }
                     // Android 10+ needs "display over other apps" to start from boot.
@@ -285,28 +293,28 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                 }
             }
             item {
-                Item("Сохранить настройки на сервер", if (serverBusy && serverItem == saveItem) "…" else null, Modifier.focusRequester(saveItem)) {
+                Item(tr("Сохранить настройки на сервер", "Захаваць налады на сервер", "Save settings to the server"), if (serverBusy && serverItem == saveItem) "…" else null, Modifier.focusRequester(saveItem)) {
                     runOnServer(saveItem) { c.serverSettings.save() }
                 }
             }
             item {
-                Item("Загрузить настройки с сервера", if (serverBusy && serverItem == loadItem) "…" else null, Modifier.focusRequester(loadItem)) {
+                Item(tr("Загрузить настройки с сервера", "Загрузіць налады з сервера", "Load settings from the server"), if (serverBusy && serverItem == loadItem) "…" else null, Modifier.focusRequester(loadItem)) {
                     if (!serverBusy) { serverItem = loadItem; confirmLoad = true }
                 }
             }
-            item { Item("Диагностика", modifier = Modifier.returnHere(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
-            item { Item("Аккаунт", login) {} }
-            item { Item("Выйти из аккаунта") { confirmLogout = true } }
+            item { Item(tr("Диагностика", "Дыягностыка", "Diagnostics"), modifier = Modifier.returnHere(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
+            item { Item(tr("Аккаунт", "Акаўнт", "Account"), login) {} }
+            item { Item(tr("Выйти из аккаунта", "Выйсці з акаўнта", "Sign out")) { confirmLogout = true } }
         }
     }
 }
 
 private fun serverResultText(r: ServerSettings.Result, saving: Boolean): String = when (r) {
-    ServerSettings.Result.Saved -> "Настройки сохранены на сервер"
-    is ServerSettings.Result.Loaded -> "Настройки загружены с сервера"
-    ServerSettings.Result.Empty -> "Не удалось загрузить: на сервере нет сохранённых настроек"
-    ServerSettings.Result.Unreadable -> "Не удалось загрузить: настройки на сервере повреждены"
-    ServerSettings.Result.Failed -> if (saving) "Не удалось сохранить настройки" else "Не удалось загрузить настройки"
+    ServerSettings.Result.Saved -> tr("Настройки сохранены на сервер", "Налады захаваны на сервер", "Settings saved to the server")
+    is ServerSettings.Result.Loaded -> tr("Настройки загружены с сервера", "Налады загружаны з сервера", "Settings loaded from the server")
+    ServerSettings.Result.Empty -> tr("Не удалось загрузить: на сервере нет сохранённых настроек", "Не ўдалося загрузіць: на серверы няма захаваных налад", "Could not load: nothing is saved on the server")
+    ServerSettings.Result.Unreadable -> tr("Не удалось загрузить: настройки на сервере повреждены", "Не ўдалося загрузіць: налады на серверы пашкоджаны", "Could not load: the saved settings are damaged")
+    ServerSettings.Result.Failed -> if (saving) tr("Не удалось сохранить настройки", "Не ўдалося захаваць налады", "Could not save the settings") else tr("Не удалось загрузить настройки", "Не ўдалося загрузіць налады", "Could not load the settings")
 }
 
 @UnstableApi
@@ -314,8 +322,8 @@ private fun serverResultText(r: ServerSettings.Result, saving: Boolean): String 
 private fun LogoutDialog(c: AppContainer, onLoggedOut: () -> Unit, close: () -> Unit) {
     val scope = rememberCoroutineScope()
     MessageDialog(
-        "Выйти из аккаунта?", "Потребуется снова ввести логин и пароль",
-        listOf("Отмена" to close, "Выйти" to {
+        tr("Выйти из аккаунта?", "Выйсці з акаўнта?", "Sign out?"), tr("Потребуется снова ввести логин и пароль", "Трэба будзе зноў увесці лагін і пароль", "You will need to enter the login and password again"),
+        listOf(tr("Отмена", "Скасаваць", "Cancel") to close, tr("Выйти", "Выйсці", "Sign out") to {
             close()
             scope.launch {
                 c.player.stop()
@@ -366,23 +374,23 @@ private fun ChannelsPage(c: AppContainer) {
             MessageDialog(
                 ch.name, null,
                 listOf(
-                    (if (fav) "Убрать из избранного" else "★ В избранное") to {
+                    (if (fav) tr("Убрать из избранного", "Прыбраць з абранага", "Remove from favourites") else tr("★ В избранное", "★ У абранае", "★ Add to favourites")) to {
                         menuFor = null
                         scope.launch { c.settings.update { if (fav) it.copy(favorites = it.favorites - ch.code) else it.copy(favorites = it.favorites + ch.code) } }
                     },
-                    (if (hidden) "Показать" else "Скрыть") to {
+                    (if (hidden) tr("Показать", "Паказаць", "Show") else tr("Скрыть", "Схаваць", "Hide")) to {
                         menuFor = null
                         scope.launch { c.settings.update { if (hidden) it.copy(hidden = it.hidden - ch.code) else it.copy(hidden = it.hidden + ch.code) } }
                     },
-                    "Переместить" to { menuFor = null; moving = ch.code },
-                    "Отмена" to { menuFor = null },
+                    tr("Переместить", "Перамясціць", "Move") to { menuFor = null; moving = ch.code },
+                    tr("Отмена", "Скасаваць", "Cancel") to { menuFor = null },
                 ),
             )
         }
     }) {
-        Title("Каналы")
+        Title(tr("Каналы", "Каналы", "Channels"))
         Text(
-            if (moving != null) "Перемещение: ▲ ▼ — двигать канал, OK или Назад — готово" else "OK на канале — избранное, скрыть, переместить",
+            if (moving != null) tr("Перемещение: ▲ ▼ — двигать канал, OK или Назад — готово", "Перамяшчэнне: ▲ ▼ — рухаць канал, OK або Назад — гатова", "Moving: ▲ ▼ — move the channel, OK or Back — done") else tr("OK на канале — избранное, скрыть, переместить", "OK на канале — абранае, схаваць, перамясціць", "OK on a channel — favourite, hide, move"),
             fontSize = 18.sp, color = if (moving != null) Palette.Focus else Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
         )
         // Same numbering as the playback list: position among visible channels, updated live while moving.
@@ -414,7 +422,7 @@ private fun ChannelsPage(c: AppContainer) {
             itemsIndexed(order, key = { _, ch -> ch.code }) { i, ch ->
                 val hidden = ch.code in s.hidden
                 val fav = ch.code in s.favorites
-                val tags = listOfNotNull("★".takeIf { fav }, "скрыт".takeIf { hidden }, "↕ двигается".takeIf { moving == ch.code }).joinToString("  ")
+                val tags = listOfNotNull("★".takeIf { fav }, tr("скрыт", "схаваны", "hidden").takeIf { hidden }, "↕ " + tr("двигается", "рухаецца", "moving").takeIf { moving == ch.code }).joinToString("  ")
                 val isAnchor = ch.code == anchor || (anchor == null && i == 0)
                 Item(
                     "${numbers[ch.code]?.let { "$it. " } ?: ""}${ch.name}", tags,
@@ -447,8 +455,8 @@ private fun UpdatesPage(c: AppContainer) {
         awaitingPermission = r == InstallResult.NEEDS_PERMISSION
         installNote = when (r) {
             InstallResult.STARTED -> null
-            InstallResult.NEEDS_PERMISSION -> "Разрешите установку и нажмите ещё раз"
-            InstallResult.FAILED -> "Не удалось открыть установщик"
+            InstallResult.NEEDS_PERMISSION -> tr("Разрешите установку и нажмите ещё раз", "Дазвольце ўсталёўку і націсніце яшчэ раз", "Allow installing and press again")
+            InstallResult.FAILED -> tr("Не удалось открыть установщик", "Не ўдалося адкрыць усталёўшчык", "Could not open the installer")
         }
     }
     // Back from the "install unknown apps" switch: carry on if it was turned on.
@@ -473,17 +481,17 @@ private fun UpdatesPage(c: AppContainer) {
         else -> null
     }
     val updateHint = when (val u = update) {
-        is UpdateState.Downloading -> "Загрузка ${u.percent}%"
-        is UpdateState.DownloadFailed -> "Не удалось скачать, ещё раз"
-        is UpdateState.Downloaded -> installNote ?: "Установить"
-        else -> installNote ?: "Скачать и установить"
+        is UpdateState.Downloading -> tr("Загрузка ${u.percent}%", "Загрузка ${u.percent}%", "Downloading ${u.percent}%")
+        is UpdateState.DownloadFailed -> tr("Не удалось скачать, ещё раз", "Не ўдалося спампаваць, яшчэ раз", "Download failed, try again")
+        is UpdateState.Downloaded -> installNote ?: tr("Установить", "Усталяваць", "Install")
+        else -> installNote ?: tr("Скачать и установить", "Спампаваць і ўсталяваць", "Download and install")
     }
     val checkLabel = when (update) {
-        UpdateState.Checking -> "Проверяю…"
-        UpdateState.UpToDate -> "Обновлений нет"
-        UpdateState.CheckFailed -> "Нет связи, ещё раз"
+        UpdateState.Checking -> tr("Проверяю…", "Правяраю…", "Checking…")
+        UpdateState.UpToDate -> tr("Обновлений нет", "Абнаўленняў няма", "Up to date")
+        UpdateState.CheckFailed -> tr("Нет связи, ещё раз", "Няма сувязі, яшчэ раз", "No connection, try again")
         UpdateState.Idle -> null
-        else -> "Есть новая версия"
+        else -> tr("Есть новая версия", "Ёсць новая версія", "A new version is out")
     }
     fun onUpdate() {
         when (val u = update) {
@@ -494,13 +502,13 @@ private fun UpdatesPage(c: AppContainer) {
     }
 
     PageFrame {
-        Title("Обновления")
+        Title(tr("Обновления", "Абнаўленні", "Updates"))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-            item(key = "installed") { Item("Установлена версия", BuildConfig.VERSION_NAME) {} }
-            if (offer != null) item(key = "update") { Item("Обновить до версии ${offer.version}", updateHint, Modifier.focusRequester(first)) { onUpdate() } }
+            item(key = "installed") { Item(tr("Установлена версия", "Усталявана версія", "Installed version"), BuildConfig.VERSION_NAME) {} }
+            if (offer != null) item(key = "update") { Item(tr("Обновить до версии ${offer.version}", "Абнавіць да версіі ${offer.version}", "Update to version ${offer.version}"), updateHint, Modifier.focusRequester(first)) { onUpdate() } }
             if (offer != null && offer.notes.isNotEmpty()) item(key = "notes") {
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Что нового в ${offer.version}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+                    Text(tr("Что нового в ${offer.version}", "Што новага ў ${offer.version}", "What is new in ${offer.version}"), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
                     offer.notes.forEach {
                         // Wrapped lines line up with the text, not with the bullet.
                         Row {
@@ -511,13 +519,13 @@ private fun UpdatesPage(c: AppContainer) {
                 }
             }
             item(key = "check") {
-                Item("Проверить сейчас", checkLabel, if (offer == null) Modifier.focusRequester(first) else Modifier) {
+                Item(tr("Проверить сейчас", "Праверыць зараз", "Check now"), checkLabel, if (offer == null) Modifier.focusRequester(first) else Modifier) {
                     // A version found by hand needs no toast later.
                     scope.launch { c.updates.check(c.appScope)?.join(); (c.updates.state.value as? UpdateState.Available)?.let { a -> c.settings.update { it.copy(announcedUpdate = a.release.version) } } }
                 }
             }
             item(key = "auto") {
-                Item("Проверять автоматически", if (s.autoCheckUpdates) "Да" else "Нет") {
+                Item(tr("Проверять автоматически", "Правяраць аўтаматычна", "Check automatically"), yesNo(s.autoCheckUpdates)) {
                     val on = !s.autoCheckUpdates
                     scope.launch {
                         c.settings.update { it.copy(autoCheckUpdates = on) }
@@ -527,8 +535,8 @@ private fun UpdatesPage(c: AppContainer) {
             }
             item(key = "note") {
                 Text(
-                    if (s.autoCheckUpdates) "Приложение проверяет новую версию при запуске и раз в сутки и коротко сообщает о ней. Устанавливается обновление только после вашего подтверждения."
-                    else "Автоматическая проверка выключена: о новой версии приложение не сообщает. Проверить можно кнопкой «Проверить сейчас».",
+                    if (s.autoCheckUpdates) tr("Приложение проверяет новую версию при запуске и раз в сутки и коротко сообщает о ней. Устанавливается обновление только после вашего подтверждения.", "Праграма правярае новую версію пры запуску і раз на суткі і коратка паведамляе пра яе. Усталёўваецца абнаўленне толькі пасля вашага пацверджання.", "The app looks for a new version at start and once a day and tells you briefly. An update is installed only after you confirm.")
+                    else tr("Автоматическая проверка выключена: о новой версии приложение не сообщает. Проверить можно кнопкой «Проверить сейчас».", "Аўтаматычная праверка выключана: пра новую версію праграма не паведамляе. Праверыць можна кнопкай «Праверыць зараз».", "Automatic check is off: the app does not tell about new versions. Use «Check now»."),
                     fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 )
             }
@@ -546,54 +554,55 @@ private val legendOrder = listOf(
 )
 
 /** Only what a viewer needs: which key does what. */
-private val helpSections = listOf(
-    HelpSection("Просмотр", listOf(
-        "▲ ▼" to "следующий / предыдущий канал",
-        "OK" to "описание передачи, ещё раз — список каналов",
-        "◀" to "список каналов",
-        "▶" to "программа передач",
-        "Назад" to "список каналов, ещё раз — меню",
-        "Цифры" to "набрать номер канала, как в списке",
+private fun helpSections() = listOf(
+    HelpSection(tr("Просмотр", "Прагляд", "Watching"), listOf(
+        "▲ ▼" to tr("следующий / предыдущий канал", "наступны / папярэдні канал", "next / previous channel"),
+        "OK" to tr("описание передачи, ещё раз — список каналов", "апісанне перадачы, яшчэ раз — спіс каналаў", "programme description, again — channel list"),
+        "◀" to tr("список каналов", "спіс каналаў", "channel list"),
+        "▶" to tr("программа передач", "праграма перадач", "TV guide"),
+        tr("Назад", "Назад", "Back") to tr("список каналов, ещё раз — меню", "спіс каналаў, яшчэ раз — меню", "channel list, again — menu"),
+        tr("Цифры", "Лічбы", "Digits") to tr("набрать номер канала, как в списке", "набраць нумар канала, як у спісе", "dial a channel number as in the list"),
     )),
     HelpSection(
-        "Цвет жанров (Настройки → «Цвет жанров»)",
+        tr("Цвет жанров (Настройки → «Цвет жанров»)", "Колер жанраў (Налады → «Колер жанраў»)", "Genre colours (Settings → «Genre colours»)"),
         legendOrder.map { it.colour to it.label },
         swatches = legendOrder.map { it.argb },
     ),
-    HelpSection("Субтитры и звук", listOf(
-        "SUB" to "у канала есть субтитры: жёлтая плашка — включены, перечёркнутая — выключены",
-        "OK, затем ▲" to "включить или выключить субтитры (в описании передачи, в архиве — на паузе)",
-        "Нажать на SUB" to "то же на телефоне; или кнопка субтитров на пульте",
-        "Русский / Английский" to "звуковые дорожки канала, играющая выделена",
-        "OK, затем ▼" to "сменить звук (в описании передачи, в архиве — на паузе); выбор запоминается",
-        "Нажать на язык" to "сменить звук на телефоне",
-        "Кнопка «Аудио»" to "сменить звук, если такая есть на пульте",
+    HelpSection(tr("Субтитры и звук", "Субтытры і гук", "Subtitles and sound"), listOf(
+        "SUB" to tr("у канала есть субтитры: жёлтая плашка — включены, перечёркнутая — выключены", "у канала ёсць субтытры: жоўтая плашка — уключаны, перакрэсленая — выключаны", "the channel has subtitles: yellow — on, crossed out — off"),
+        tr("OK, затем ▲", "OK, потым ▲", "OK, then ▲") to tr("включить или выключить субтитры (в описании передачи, в архиве — на паузе)", "уключыць або выключыць субтытры (у апісанні перадачы, у архіве — на паўзе)", "subtitles on or off (in the description; in the archive — when paused)"),
+        tr("Нажать на SUB", "Націснуць на SUB", "Tap SUB") to tr("то же на телефоне; или кнопка субтитров на пульте", "тое ж на тэлефоне; або кнопка субтытраў на пульце", "the same on a phone; or the subtitles key on the remote"),
+        tr("Русский / Английский", "Руская / Англійская", "Russian / English") to tr("звуковые дорожки канала, играющая выделена", "гукавыя дарожкі канала, тая, што гучыць, вылучана", "sound tracks of the channel, the playing one highlighted"),
+        tr("OK, затем ▼", "OK, потым ▼", "OK, then ▼") to tr("сменить звук (в описании передачи, в архиве — на паузе); выбор запоминается", "змяніць гук (у апісанні перадачы, у архіве — на паўзе); выбар запамінаецца", "change the sound (in the description; in the archive — when paused); the choice is remembered"),
+        tr("Нажать на язык", "Націснуць на мову", "Tap the language") to tr("сменить звук на телефоне", "змяніць гук на тэлефоне", "change the sound on a phone"),
+        tr("Кнопка «Аудио»", "Кнопка «Аўдыя»", "«Audio» key") to tr("сменить звук, если такая есть на пульте", "змяніць гук, калі такая ёсць на пульце", "change the sound, if the remote has one"),
     )),
-    HelpSection("Список каналов и меню", listOf(
-        "OK" to "смотреть канал",
-        "Удерживать OK" to "добавить в избранное или убрать",
-        "◀" to "меню: все каналы, избранное, категории, настройки",
-        "Выход" to "Меню → «Выход»",
+    HelpSection(tr("Список каналов и меню", "Спіс каналаў і меню", "Channel list and menu"), listOf(
+        "OK" to tr("смотреть канал", "глядзець канал", "watch the channel"),
+        tr("Удерживать OK", "Утрымліваць OK", "Hold OK") to tr("добавить в избранное или убрать", "дадаць у абранае або прыбраць", "add to favourites or remove"),
+        "◀" to tr("меню: все каналы, избранное, категории, настройки", "меню: усе каналы, абранае, катэгорыі, налады", "menu: all channels, favourites, categories, settings"),
+        tr("Выход", "Выхад", "Exit") to tr("Меню → «Выход»", "Меню → «Выхад»", "Menu → «Exit»"),
     )),
-    HelpSection("Архив", listOf(
-        "Как открыть" to "▶ на канале, выбрать прошедшую передачу с пометкой «Архив», OK",
-        "OK" to "пауза; на паузе видно описание передачи",
-        "◀ ▶" to "перемотка на 30 секунд (удерживать — быстрее, до 5 минут)",
-        "▲ ▼" to "следующая / предыдущая передача",
-        "На паузе ▲ / ▼" to "включить или выключить субтитры / сменить звук",
-        "Назад" to "вернуться в прямой эфир",
+    HelpSection(tr("Архив", "Архіў", "Archive"), listOf(
+        tr("Как открыть", "Як адкрыць", "How to open") to tr("▶ на канале, выбрать прошедшую передачу с пометкой «Архив», OK", "▶ на канале, выбраць мінулую перадачу з пазнакай «Архіў», OK", "▶ on a channel, pick a past programme marked «Archive», OK"),
+        "OK" to tr("пауза; на паузе видно описание передачи", "паўза; на паўзе відаць апісанне перадачы", "pause; when paused the description shows"),
+        "◀ ▶" to tr("перемотка на 30 секунд (удерживать — быстрее, до 5 минут)", "перамотка на 30 секунд (утрымліваць — хутчэй, да 5 хвілін)", "seek 30 seconds (hold — faster, up to 5 minutes)"),
+        "▲ ▼" to tr("следующая / предыдущая передача", "наступная / папярэдняя перадача", "next / previous programme"),
+        tr("На паузе ▲ / ▼", "На паўзе ▲ / ▼", "Paused ▲ / ▼") to tr("включить или выключить субтитры / сменить звук", "уключыць або выключыць субтытры / змяніць гук", "subtitles on or off / change the sound"),
+        tr("Назад", "Назад", "Back") to tr("вернуться в прямой эфир", "вярнуцца ў прамы эфір", "back to live TV"),
     )),
-    HelpSection("Телефон и планшет", listOf(
-        "Касание видео" to "как OK",
-        "Свайп вверх / вниз" to "следующий / предыдущий канал, в архиве — передача",
-        "Долгое нажатие" to "на канале — избранное",
-        "Полоса внизу" to "в архиве: нажмите или перетащите — перемотка",
-        "Назад" to "как на пульте",
+    HelpSection(tr("Телефон и планшет", "Тэлефон і планшэт", "Phone and tablet"), listOf(
+        tr("Касание видео", "Дотык да відэа", "Tap the video") to tr("как OK", "як OK", "like OK"),
+        tr("Свайп вверх / вниз", "Свайп уверх / уніз", "Swipe up / down") to tr("следующий / предыдущий канал, в архиве — передача", "наступны / папярэдні канал, у архіве — перадача", "next / previous channel, in the archive — programme"),
+        tr("Долгое нажатие", "Доўгае націсканне", "Long press") to tr("на канале — избранное", "на канале — абранае", "on a channel — favourite"),
+        tr("Полоса внизу", "Паласа ўнізе", "Bar at the bottom") to tr("в архиве: нажмите или перетащите — перемотка", "у архіве: націсніце або перацягніце — перамотка", "in the archive: tap or drag to seek"),
+        tr("Назад", "Назад", "Back") to tr("как на пульте", "як на пульце", "as on the remote"),
     )),
-    HelpSection("Мышь", listOf(
-        "Левая кнопка" to "как OK",
-        "Правая кнопка" to "назад",
-        "Колёсико" to "переключение каналов, в архиве — перемотка",
+    HelpSection(tr("Мышь и клавиатура", "Мыш і клавіятура", "Mouse and keyboard"), listOf(
+        tr("Левая кнопка", "Левая кнопка", "Left button") to tr("как OK", "як OK", "like OK"),
+        tr("Правая кнопка", "Правая кнопка", "Right button") to tr("назад", "назад", "back"),
+        tr("Колёсико", "Колца", "Wheel") to tr("переключение каналов, в архиве — перемотка", "пераключэнне каналаў, у архіве — перамотка", "switch channels, in the archive — seek"),
+        tr("Пробел", "Прабел", "Space") to tr("как OK", "як OK", "like OK"),
     )),
 )
 
@@ -602,10 +611,10 @@ private fun HelpPage() {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     PageFrame {
-        Title("Как пользоваться / наш сайт")
+        Title(tr("Как пользоваться / наш сайт", "Як карыстацца / наш сайт", "How to use / our website"))
         // Each section takes the focus in turn, so the remote scrolls the page.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-            itemsIndexed(helpSections) { i, sec ->
+            itemsIndexed(helpSections()) { i, sec ->
                 Surface(
                     onClick = {},
                     modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
@@ -657,18 +666,18 @@ private fun AboutCard() {
     ) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("О приложении", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 2.dp))
-                Text("Remotely ${BuildConfig.VERSION_NAME} — бесплатное приложение с открытым кодом.", fontSize = 17.sp, color = Palette.Text)
-                Text("Автор: satroschenko", fontSize = 17.sp, color = Palette.Text)
-                Text("Сайт проекта, вопросы и пожелания:", fontSize = 17.sp, color = Palette.Text)
+                Text(tr("О приложении", "Пра праграму", "About"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(bottom = 2.dp))
+                Text("Remotely ${BuildConfig.VERSION_NAME} — " + tr("бесплатное приложение с открытым кодом.", "бясплатная праграма з адкрытым кодам.", "a free open-source app."), fontSize = 17.sp, color = Palette.Text)
+                Text(tr("Автор", "Аўтар", "Author") + ": satroschenko", fontSize = 17.sp, color = Palette.Text)
+                Text(tr("Сайт проекта, вопросы и пожелания:", "Сайт праекта, пытанні і пажаданні:", "Project site, questions and wishes:"), fontSize = 17.sp, color = Palette.Text)
                 Text("github.com/satroschenko/remotely", fontSize = 17.sp, color = Palette.Focus)
                 Text(
-                    if (noBrowser) "Браузера нет — наведите камеру телефона на код справа." else "Нажмите, чтобы открыть, или наведите камеру телефона на код справа.",
+                    if (noBrowser) tr("Браузера нет — наведите камеру телефона на код справа.", "Браўзера няма — навядзіце камеру тэлефона на код справа.", "No browser — point a phone camera at the code on the right.") else tr("Нажмите, чтобы открыть, или наведите камеру телефона на код справа.", "Націсніце, каб адкрыць, або навядзіце камеру тэлефона на код справа.", "Press to open, or point a phone camera at the code on the right."),
                     fontSize = 15.sp, color = if (noBrowser) Palette.Focus else Palette.TextDim,
                 )
             }
             Spacer(Modifier.width(20.dp))
-            Image(painterResource(R.drawable.qr_github), "QR-код ссылки на проект", Modifier.size(132.dp))
+            Image(painterResource(R.drawable.qr_github), tr("QR-код ссылки на проект", "QR-код спасылкі на праект", "QR code of the project link"), Modifier.size(132.dp))
         }
     }
 }
@@ -682,20 +691,20 @@ private fun DiagnosticsPage(c: AppContainer) {
     val ps by c.player.state.collectAsState()
     val now = c.clock.nowMs()
     val sessionText = when (val st = session) {
-        is SessionState.Active -> "активна, токен до ${ZalaTime.relativeLabel(st.expiresAtMs, now)}"
-        SessionState.Connecting -> "подключение"
-        SessionState.BadCredentials -> "неверный логин/пароль"
-        SessionState.LoggedOut -> "нет"
+        is SessionState.Active -> tr("активна, токен до ${ZalaTime.relativeLabel(st.expiresAtMs, now)}", "актыўная, токен да ${ZalaTime.relativeLabel(st.expiresAtMs, now)}", "active, token until ${ZalaTime.relativeLabel(st.expiresAtMs, now)}")
+        SessionState.Connecting -> tr("подключение", "падключэнне", "connecting")
+        SessionState.BadCredentials -> tr("неверный логин/пароль", "няправільны лагін/пароль", "wrong login/password")
+        SessionState.LoggedOut -> tr("нет", "няма", "none")
     }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
     PageFrame {
-        Title("Диагностика")
+        Title(tr("Диагностика", "Дыягностыка", "Diagnostics"))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-            Text("Сеть: ${if (net) "есть" else "нет"}", fontSize = 18.sp, color = Palette.Text)
-            Text("Сессия: $sessionText", fontSize = 18.sp, color = Palette.Text)
-            Text("Плеер: ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 18.sp, color = Palette.Text)
+            Text(tr("Сеть", "Сетка", "Network") + ": " + (if (net) tr("есть", "ёсць", "up") else tr("нет", "няма", "down")), fontSize = 18.sp, color = Palette.Text)
+            Text(tr("Сессия", "Сесія", "Session") + ": $sessionText", fontSize = 18.sp, color = Palette.Text)
+            Text(tr("Плеер", "Плэер", "Player") + ": ${ps.phase}  ${ps.target?.let { it.channel.number.toString() + ". " + it.channel.name } ?: ""}", fontSize = 18.sp, color = Palette.Text)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
             items(events.withIndex().toList(), key = { it.index }) { (i, e) ->
@@ -715,3 +724,5 @@ private fun DiagnosticsPage(c: AppContainer) {
         }
     }
 }
+
+private fun yesNo(on: Boolean) = if (on) tr("Да", "Так", "Yes") else tr("Нет", "Не", "No")
