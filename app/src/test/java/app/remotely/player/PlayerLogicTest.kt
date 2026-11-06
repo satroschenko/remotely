@@ -102,17 +102,33 @@ class ArchiveTimelineTest {
     }
 
     @Test fun endedGoesToNextOrContinuesStartOver() {
-        assertEquals(TimelinePoint.InProgramme(b, 0), tl.onEnded(a, 3600_000))
-        // Start-over of D cut at 21:40 → reload D at same position.
-        assertEquals(TimelinePoint.InProgramme(d, 40 * 60_000L), tl.onEnded(d, 40 * 60_000L))
+        assertEquals(TimelinePoint.InProgramme(b, 0), tl.onEnded(a, 3600_000, a.endMs))
+        // Start-over of D opened at 21:40 ran to its end → reload D at same position.
+        assertEquals(TimelinePoint.InProgramme(d, 40 * 60_000L), tl.onEnded(d, 40 * 60_000L, t("15 21:40:00")))
         // Caught up with now → live.
-        assertEquals(TimelinePoint.Live, tl.onEnded(d, 59 * 60_000L + 50_000))
+        assertEquals(TimelinePoint.Live, tl.onEnded(d, 59 * 60_000L + 50_000, now))
     }
 
     @Test fun startOverThatBrokeOffGoesLiveInsteadOfLooping() {
-        // Recording of D stops at 21:09:40 on the server: the reload from there ends right away.
+        // Recording of D stops at 21:09:40 on the server. Opened at 21:10 it ran out at the end of what there was: reload.
         val cut = 9 * 60_000L + 40_000
-        assertEquals(TimelinePoint.InProgramme(d, cut), tl.onEnded(d, cut, 0))
-        assertEquals(TimelinePoint.Live, tl.onEnded(d, cut, cut))
+        assertEquals(TimelinePoint.InProgramme(d, cut), tl.onEnded(d, cut, t("15 21:10:00")))
+        // The reload made at 22:00 still ends at 21:09:40: broken, go live.
+        assertEquals(TimelinePoint.Live, tl.onEnded(d, cut, now))
+    }
+
+    /** «Поле чудес» 19:10–20:30 opened «С начала» at 20:03, watched from the start: at 20:03 in it the programme is over. */
+    @Test fun startOverOutlivingTheProgrammeReloadsInsteadOfCallingItACut() {
+        val show = p("S", "15 19:10:00", "15 20:30:00")
+        val later = p("N", "15 20:30:00", "15 21:00:00")
+        val clock = t("15 20:56:00")
+        val tl = ArchiveTimeline(listOf(show, later), clock, 48 * 3600_000L)
+        val played = 53 * 60_000L
+        val openedAt = t("15 20:03:00")
+        assertTrue(tl.ranOut(show, played, openedAt))
+        assertEquals(TimelinePoint.InProgramme(show, played), tl.onEnded(show, played, openedAt))
+        // Opened after the end: the whole programme was asked for, so ending at 66 % is a real break.
+        assertFalse(tl.ranOut(show, played, show.endMs))
+        assertEquals(TimelinePoint.InProgramme(later, 0), tl.onEnded(show, played, show.endMs))
     }
 }

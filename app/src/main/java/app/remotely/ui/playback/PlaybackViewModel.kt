@@ -599,7 +599,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     fun seekPress(direction: Int, big: Boolean, isRepeat: Boolean) {
         val a = _ui.value.archive ?: return
         seek.press(direction, big, isRepeat, c.clock.nowMs())
-        val target = a.programme.startMs + player.positionMs + seek.pendingMs
+        val target = seekWall(a.programme, seek.pendingMs)
         _ui.update { it.copy(archive = a.copy(seekTargetMs = target, seekDeltaMs = seek.pendingMs)) }
         showControls()
     }
@@ -627,14 +627,28 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * Where a seek by [deltaMs] lands, wall clock. Back past the start stops at the start of the programme;
+     * only from its very start does it go on into the previous one.
+     */
+    private fun seekWall(p: Programme, deltaMs: Long): Long {
+        val wall = p.startMs + player.positionMs + deltaMs
+        return if (wall < p.startMs && player.positionMs > AT_START_MS) p.startMs else wall
+    }
+
     private fun applySeek(deltaMs: Long) {
         val a = _ui.value.archive ?: return
         val ch = _ui.value.current ?: return
-        val wall = a.programme.startMs + player.positionMs + deltaMs
+        val wall = seekWall(a.programme, deltaMs)
         val tl = ArchiveTimeline(timeline.ifEmpty { listOf(a.programme) }, c.clock.nowMs(), c.epg.depthFor(ch))
         when (val r = tl.resolve(wall)) {
             is TimelinePoint.InProgramme ->
-                if (r.programme.code == a.programme.code && r.programme.startMs == a.programme.startMs) {
+                if (r.programme.code == a.programme.code && r.programme.startMs == a.programme.startMs &&
+                    r.programme.startMs + r.offsetMs > player.coveredUntilMs - SNAPSHOT_SEEK_MARGIN_MS && player.coveredUntilMs < r.programme.endMs
+                ) {
+                    // Opened on air: the recording ends where the programme was then. Ask for it again, longer.
+                    playArchive(ch, r.programme, r.offsetMs, continued = true)
+                } else if (r.programme.code == a.programme.code && r.programme.startMs == a.programme.startMs) {
                     player.seekTo(r.offsetMs)
                     _ui.update { it.copy(archive = a.copy(seekTargetMs = null, seekDeltaMs = 0, positionMs = r.offsetMs)) }
                 } else {
@@ -664,9 +678,9 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
                 val p = e.target.programme
                 val now = c.clock.nowMs()
                 val tl = ArchiveTimeline(timeline.ifEmpty { listOf(p) }, now, c.epg.depthFor(e.target.channel))
-                // Zala's recording broke off before the programme did.
-                val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS
-                when (val r = tl.onEnded(p, e.positionMs, e.target.startOffsetMs)) {
+                // Zala's recording broke off before the programme did (not just the part that was there when opened on air).
+                val cut = p.endMs <= now && e.positionMs < p.endMs - p.startMs - CUT_MARGIN_MS && !tl.ranOut(p, e.positionMs, e.coveredUntilMs)
+                when (val r = tl.onEnded(p, e.positionMs, e.coveredUntilMs)) {
                     is TimelinePoint.InProgramme -> {
                         if (cut) toast(tr("В архиве обрыв — следующая передача", "У архіве абрыў — наступная перадача", "The recording breaks off — next programme"))
                         playArchive(e.target.channel, r.programme, r.offsetMs, continued = true)
@@ -759,6 +773,10 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         const val DETAILED_BANNER_MS = 10_000L
         /** A recording this much shorter than its programme was cut by the server. */
         const val CUT_MARGIN_MS = 60_000L
+        /** Within this of the start, ← goes on into the previous programme instead of stopping at the start. */
+        const val AT_START_MS = 10_000L
+        /** A seek this close to the end of a recording opened on air asks for the recording again. */
+        const val SNAPSHOT_SEEK_MARGIN_MS = 15_000L
         /** How often the open list looks for programmes that have ended. */
         const val LIST_CLOCK_MS = 30_000L
         /** The channel list is asked again at most this often while it shows ended programmes. */

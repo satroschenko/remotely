@@ -37,15 +37,27 @@ class ArchiveTimeline(
     /** The programme before [p], while the archive still keeps its start. */
     fun previous(p: Programme): Programme? = list.lastOrNull { it.startMs < p.startMs && it.endMs <= p.startMs && it.startMs >= earliestMs }
 
-    /** What to do when a recording opened at [startOffsetMs] ended at [positionMs]. */
-    fun onEnded(p: Programme, positionMs: Long, startOffsetMs: Long = 0): TimelinePoint {
+    /**
+     * A recording opened while [p] was on air holds only what was there at [coveredUntilMs] (the moment it was
+     * asked for). True when playing reached that end: more of the programme may exist by now.
+     */
+    fun ranOut(p: Programme, positionMs: Long, coveredUntilMs: Long): Boolean =
+        coveredUntilMs < p.endMs && p.startMs + positionMs >= coveredUntilMs - SNAPSHOT_EDGE_MS
+
+    /** What to do when a recording asked for up to [coveredUntilMs] ended at [positionMs]. */
+    fun onEnded(p: Programme, positionMs: Long, coveredUntilMs: Long): TimelinePoint {
         val reached = p.startMs + positionMs
-        if (p.endMs > nowMs) {
-            // Start-over of the programme on air: manifest was cut at request time, so reload it.
-            // A reload that brought nothing new means the recording broke off: go live, don't loop.
-            val stuck = positionMs - startOffsetMs < liveMarginMs
-            return if (stuck || nowMs - reached < liveMarginMs) TimelinePoint.Live else TimelinePoint.InProgramme(p, positionMs)
+        if (ranOut(p, positionMs, coveredUntilMs)) {
+            // Ask again from here (whether or not the programme is still on air); caught up with now: live.
+            return if (nowMs - reached < liveMarginMs) TimelinePoint.Live else TimelinePoint.InProgramme(p, positionMs)
         }
+        // The recording broke off before what was asked for: on air there is nothing further to wait for.
+        if (p.endMs > nowMs) return TimelinePoint.Live
         return next(p)?.let { TimelinePoint.InProgramme(it, 0) } ?: TimelinePoint.Live
+    }
+
+    private companion object {
+        /** The last pieces of a recording asked for on air can end this much before the moment it was asked. */
+        const val SNAPSHOT_EDGE_MS = 60_000L
     }
 }

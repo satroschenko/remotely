@@ -82,7 +82,12 @@ class PlaybackRepository(
             }
         }.awaitAll()
         // Up to the first window that failed: a gap in the middle would stall the player.
-        ArchiveManifest.fromTimeshift(answers.takeWhile { it != null }.filterNotNull(), fromMs, toMs)
+        val windows = answers.takeWhile { it != null }.filterNotNull()
+        ArchiveManifest.fromTimeshift(windows, fromMs, toMs).also { mpd ->
+            // For the event log: when Zala answers short, this shows it.
+            val gotMs = mpd?.let { ArchiveManifest.durationMs(it) } ?: 0L
+            log?.add("Отложенный просмотр: окон ${windows.size} из $count, ${gotMs / 60_000} из ${(toMs - fromMs) / 60_000} мин")
+        }
     }
 
     companion object {

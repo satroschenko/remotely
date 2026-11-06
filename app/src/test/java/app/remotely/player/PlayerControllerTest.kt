@@ -75,6 +75,20 @@ class PlayerControllerTest {
         return Triple(c, engine, streams)
     }
 
+    @Test fun recordingOpenedOnAirKnowsWhereItEnds() = runTest {
+        val (c, e, _) = setup()
+        val events = events(c)
+        advanceTimeBy(1_200_000) // 20 minutes into the programme
+        c.play(PlaybackTarget.Archive(ch, prog, 0))
+        runCurrent()
+        e.ready()
+        e.positionMs = 1_195_000
+        e.state = EngineState.ENDED
+        e.l!!.onStateChanged(EngineState.ENDED)
+        runCurrent()
+        assertEquals(PlayerEvent.RecordingEnded(PlaybackTarget.Archive(ch, prog, 0), 1_195_000, 1_200_000), events.single())
+    }
+
     @Test fun breakInBroadcastShowsNoStreamAndOpensWhenOver() = runTest {
         val engine = FakeEngine()
         val clock = Clock { testScheduler.currentTime }

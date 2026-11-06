@@ -77,7 +77,8 @@ data class PlayerState(
 )
 
 sealed interface PlayerEvent {
-    data class RecordingEnded(val target: PlaybackTarget.Archive, val positionMs: Long) : PlayerEvent
+    /** [coveredUntilMs]: the moment the recording was asked for, or the programme end if that came first. */
+    data class RecordingEnded(val target: PlaybackTarget.Archive, val positionMs: Long, val coveredUntilMs: Long) : PlayerEvent
     /** [code]: the portal's reason, e.g. "98" = blocked (channel not in the subscription). */
     data class RecordingUnavailable(val target: PlaybackTarget.Archive, val code: String? = null) : PlayerEvent
 }
@@ -118,6 +119,10 @@ class PlayerController(
         engine.setListener(this)
     }
 
+    /** What the recording on screen can hold, epoch ms: one asked for while the programme was on air ends where it was then. */
+    var coveredUntilMs = 0L
+        private set
+
     /** Position in the recording; while a new link is fetched, where it is going to start. */
     val positionMs: Long get() = if (engineOnTarget) engine.positionMs else archivePositionMs
     val durationMs: Long get() = engine.durationMs
@@ -135,6 +140,7 @@ class PlayerController(
         engineOnTarget = false
         if (target is PlaybackTarget.Live) blackoutUntil(target.channel)?.let { return blackout(target, it) }
         _state.update { it.copy(phase = phase, paused = false) }
+        if (target is PlaybackTarget.Archive) coveredUntilMs = minOf(target.programme.endMs, clock.nowMs())
         openJob = scope.launch {
             try {
                 val url = when (target) {
@@ -287,7 +293,7 @@ class PlayerController(
         archivePositionMs += HOLE_SKIP_MS
         log.add("Дыра в записи — пропускаю до ${mmss(archivePositionMs)}")
         if (archivePositionMs >= target.programme.endMs - target.programme.startMs) {
-            _events.tryEmit(PlayerEvent.RecordingEnded(target, archivePositionMs))
+            _events.tryEmit(PlayerEvent.RecordingEnded(target, archivePositionMs, coveredUntilMs))
         } else {
             open(target, Phase.RECONNECTING)
         }
@@ -383,7 +389,7 @@ class PlayerController(
                 val t = _state.value.target
                 if (t is PlaybackTarget.Archive) {
                     log.add("Запись кончилась на ${mmss(engine.positionMs)}")
-                    _events.tryEmit(PlayerEvent.RecordingEnded(t, engine.positionMs))
+                    _events.tryEmit(PlayerEvent.RecordingEnded(t, engine.positionMs, coveredUntilMs))
                 } else {
                     fail(IllegalStateException("live ended"))
                 }
