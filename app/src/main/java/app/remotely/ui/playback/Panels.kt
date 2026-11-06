@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.border
@@ -432,7 +435,13 @@ fun BoxScope.SideMenu(
             Text(tr("Меню", "Меню", "Menu"), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             val balance by vm.balance.collectAsState()
             balance?.let {
-                Text(tr("Баланс", "Баланс", "Balance") + ": " + AccountRepository.roubles(it), fontSize = 18.sp, color = Palette.TextDim, maxLines = 1)
+                Text(
+                    buildAnnotatedString {
+                        append(tr("Ваш баланс", "Ваш баланс", "Your balance") + ": ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Palette.Text)) { append(AccountRepository.roubles(it)) }
+                    },
+                    fontSize = 18.sp, color = Palette.TextDim, maxLines = 1, modifier = Modifier.padding(bottom = 8.dp),
+                )
             }
             val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
             MenuItem(tr("Все каналы", "Усе каналы", "All channels"), Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exitItem), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
