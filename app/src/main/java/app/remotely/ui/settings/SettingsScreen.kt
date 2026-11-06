@@ -77,6 +77,8 @@ import app.remotely.BuildConfig
 import app.remotely.R
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
+import app.remotely.data.api.UserPackage
+import app.remotely.data.repo.AccountRepository
 import app.remotely.data.repo.GenreGroup
 import app.remotely.data.repo.ServerSettings
 import app.remotely.data.session.SessionState
@@ -93,7 +95,7 @@ import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
 
-private enum class Page { MAIN, CHANNELS, HELP, UPDATES, DIAGNOSTICS }
+private enum class Page { MAIN, CHANNELS, HELP, UPDATES, DIAGNOSTICS, PACKAGES }
 
 @UnstableApi
 @Composable
@@ -102,7 +104,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
     var openedFrom by remember { mutableStateOf<Page?>(null) }
     BackHandler { if (page == Page.MAIN) onBack() else page = Page.MAIN }
     // On pages without sideways controls ← goes back too, like Back.
-    val leftIsBack = page == Page.HELP || page == Page.UPDATES || page == Page.DIAGNOSTICS
+    val leftIsBack = page == Page.HELP || page == Page.UPDATES || page == Page.DIAGNOSTICS || page == Page.PACKAGES
     AnimatedContent(
         targetState = page,
         transitionSpec = {
@@ -123,6 +125,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
             Page.HELP -> HelpPage()
             Page.UPDATES -> UpdatesPage(c)
             Page.DIAGNOSTICS -> DiagnosticsPage(c)
+            Page.PACKAGES -> PackagesPage(c)
         }
     }
 }
@@ -182,7 +185,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.DIAGNOSTICS -> 11; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 12; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -230,6 +233,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item { Item(tr("Как пользоваться / наш сайт", "Як карыстацца / наш сайт", "How to use / our website"), modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
             item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
             item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
+            item { Item(tr("Подписка: пакеты и баланс", "Падпіска: пакеты і баланс", "Subscription: packages and balance"), modifier = Modifier.returnHere(Page.PACKAGES)) { open(Page.PACKAGES) } }
             item {
                 // In all three languages, so whoever switched it by mistake finds the way back.
                 Item("Язык / Мова / Language", s.language.label) {
@@ -719,6 +723,43 @@ private fun DiagnosticsPage(c: AppContainer) {
                         Text(ZalaTime.relativeLabel(e.timeMs, now), fontSize = 15.sp, color = Palette.TextDim, modifier = Modifier.width(150.dp))
                         Text(e.text, fontSize = 15.sp, color = Palette.Text)
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Настройки → «Подписка»: the packages and the balance, asked for when the page opens. */
+@Composable
+private fun PackagesPage(c: AppContainer) {
+    val balance by c.account.balance.collectAsState()
+    var packages by remember { mutableStateOf<List<UserPackage>?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        launch { c.account.refreshBalance(force = true) }
+        val p = c.account.packages()
+        if (p == null) failed = true else packages = p
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
+    PageFrame {
+        Title(tr("Подписка", "Падпіска", "Subscription"))
+        Text(
+            tr("Баланс", "Баланс", "Balance") + ": " + (balance?.let(AccountRepository::roubles) ?: "—"),
+            fontSize = 22.sp, color = Palette.Text, modifier = Modifier.padding(bottom = 16.dp),
+        )
+        val list = packages
+        when {
+            failed -> Text(tr("Не удалось узнать пакеты. Попробуйте позже", "Не ўдалося даведацца пакеты. Паспрабуйце пазней", "Could not get the packages. Try again later"), fontSize = 20.sp, color = Palette.TextDim)
+            list == null -> Text(tr("Загрузка…", "Загрузка…", "Loading…"), fontSize = 20.sp, color = Palette.TextDim)
+            list.isEmpty() -> Text(tr("Пакетов нет", "Пакетаў няма", "No packages"), fontSize = 20.sp, color = Palette.TextDim)
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+                items(list.withIndex().toList(), key = { it.index }) { (i, p) ->
+                    val term = p.untilMs?.let { tr("до ${ZalaTime.ddmmyyyy(it)}", "да ${ZalaTime.ddmmyyyy(it)}", "until ${ZalaTime.ddmmyyyy(it)}") }
+                        ?: tr("без срока", "без тэрміну", "no end date")
+                    val price = p.price?.let { ", " + AccountRepository.roubles(it) }.orEmpty()
+                    Item(p.name, term + price, if (i == 0) Modifier.focusRequester(first) else Modifier) {}
                 }
             }
         }

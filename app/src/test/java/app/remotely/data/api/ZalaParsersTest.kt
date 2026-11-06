@@ -20,6 +20,26 @@ class ZalaParsersTest {
         assertEquals(listOf("Спорт", "Кино"), ZalaParsers.columns(body).map { it.name })
     }
 
+    @Test fun balanceInRoubles() {
+        assertEquals(java.math.BigDecimal("24.05"), ZalaParsers.balance("""{"returncode":"0","errormsg":"","balance":"24.05"}"""))
+        assertNull(ZalaParsers.balance("""{"returncode":"0","balance":""}"""))
+        assertThrows(Exception::class.java) { ZalaParsers.balance("""{"returncode":"10140205","errormsg":"x"}""") }
+    }
+
+    @Test fun packagesWithTheirTerms() {
+        val body = """{"returncode":"0","totalcount":"3","data":[
+            {"productcode":"055","price":"0.00","begintime":"22/09/2026 09:05","endtime":"31/12/2099 23:59","status":"1","contentname":"Премиум"},
+            {"productcode":"007","price":"12.50","begintime":"01/11/2026 10:00","endtime":"30/11/2026 23:59","status":"1","contentname":"Кино"},
+            {"productcode":"","price":"0.00","begintime":"","endtime":"","status":"1","contentname":""}]}"""
+        val p = ZalaParsers.packages(body)
+        assertEquals(listOf("Премиум", "Кино"), p.map { it.name })
+        assertNull(p[0].untilMs) // 2099: no end
+        assertEquals(ZalaTime.parseMinsk("2026.11.30 23:59:00"), p[1].untilMs)
+        assertEquals(java.math.BigDecimal("12.50"), p[1].price)
+        assertNull(p[0].price) // free
+        assertEquals(emptyList<UserPackage>(), ZalaParsers.packages("""{"returncode":"10140205","errormsg":" Has no data.","data":[]}"""))
+    }
+
     @Test fun loginEntry() {
         val e = ZalaParsers.loginEntry(Fixtures.LOGIN1_OK)
         assertEquals(epg, e.epgBase)

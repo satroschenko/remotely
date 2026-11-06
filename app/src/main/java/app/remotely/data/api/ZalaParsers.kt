@@ -142,6 +142,35 @@ object ZalaParsers {
 
     fun userDataSaved(body: String) = requireOk(json(body))
 
+    /** sdk_getbalance: `{"returncode":"0","balance":"24.05"}`, roubles; null when the portal gives no number. */
+    fun balance(body: String): java.math.BigDecimal? {
+        val o = json(body)
+        requireOk(o)
+        return o.str("balance").trim().toBigDecimalOrNull()
+    }
+
+    private val PACKAGE_TIME = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+    /** Ends this late are the portal's "forever" (31/12/2099). */
+    private const val NO_END_YEAR = 2090
+
+    /** sdk_getuserorderlist: the subscription's packages. 10140205 «Has no data» = none. */
+    fun packages(body: String): List<UserPackage> {
+        val o = json(body)
+        if (o.code() == NO_DATA) return emptyList()
+        requireOk(o)
+        val data = o["data"] as? JsonArray ?: return emptyList()
+        return data.filterIsInstance<JsonObject>().mapNotNull { p ->
+            val name = p.text("contentname").ifEmpty { return@mapNotNull null }
+            val end = runCatching { java.time.LocalDateTime.parse(p.str("endtime").trim(), PACKAGE_TIME) }.getOrNull()
+            val until = end?.takeIf { it.year < NO_END_YEAR }?.atZone(ZalaTime.MINSK)?.toInstant()?.toEpochMilli()
+            val price = p.str("price").trim().toBigDecimalOrNull()?.takeIf { it.signum() > 0 }
+            UserPackage(name, until, price)
+        }
+    }
+
+    private const val NO_DATA = "10140205"
+
     fun subscribedNumbers(body: String): Set<Int> {
         val o = json(body)
         requireOk(o)

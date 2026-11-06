@@ -48,6 +48,9 @@ data class Programme(
     val recorded: Boolean,
 )
 
+/** A package of the subscription («Мои пакеты» in the official app); [untilMs] null = no end, [price] null = free. */
+data class UserPackage(val name: String, val untilMs: Long?, val price: java.math.BigDecimal?)
+
 /** The operator's announcement on the portal (what the official app shows at login); [publishedAtMs] from the file's date. */
 data class OperatorMessage(val text: String, val publishedAtMs: Long?)
 

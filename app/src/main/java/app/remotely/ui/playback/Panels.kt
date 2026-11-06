@@ -97,6 +97,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
+import app.remotely.data.repo.AccountRepository
 import app.remotely.data.api.Programme
 import app.remotely.data.repo.ChannelGroup
 import app.remotely.data.repo.ChannelLists
@@ -429,6 +430,10 @@ fun BoxScope.SideMenu(
             }
         } else {
             Text(tr("Меню", "Меню", "Menu"), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
+            val balance by vm.balance.collectAsState()
+            balance?.let {
+                Text(tr("Баланс", "Баланс", "Balance") + ": " + AccountRepository.roubles(it), fontSize = 18.sp, color = Palette.TextDim, maxLines = 1)
+            }
             val onCategories = groups.isNotEmpty() && (mode == ListMode.GROUP || fromGroups)
             MenuItem(tr("Все каналы", "Усе каналы", "All channels"), Modifier.currentIf(mode == ListMode.ALL && !onCategories).focusRequester(top).wrapTo(Key.DirectionUp, exitItem), selected = mode == ListMode.ALL) { vm.selectMode(ListMode.ALL) }
             MenuItem(tr("★ Избранное", "★ Абранае", "★ Favourites"), Modifier.currentIf(mode == ListMode.FAVORITES && !onCategories), selected = mode == ListMode.FAVORITES) {
@@ -900,17 +905,17 @@ private fun Framed(colour: Color, content: @Composable () -> Unit) {
 }
 
 /**
- * «АРХИВ» in a red frame with a pulsing red dot on a dark plate: readable on a bright picture, and the frame and
- * the dot are drawn shapes, so they stay red with the system's high-contrast text, which turns red words black.
+ * «АРХИВ» in a frame of the app's yellow with a pulsing yellow dot on a dark plate: readable on a bright picture, and
+ * the frame and the dot are drawn shapes, so they keep their colour with the system's high-contrast text.
  */
 @Composable
 private fun ArchivePlate() {
     val shape = RoundedCornerShape(4.dp)
     Row(
-        Modifier.clip(shape).background(Color(0xCC000000)).border(2.dp, Palette.Record, shape).padding(horizontal = 6.dp, vertical = 2.dp),
+        Modifier.clip(shape).background(Color(0xCC000000)).border(2.dp, Palette.Focus, shape).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PulsingDot(Palette.Record)
+        PulsingDot(Palette.Focus)
         Spacer(Modifier.width(6.dp))
         Text(tr("АРХИВ", "АРХІЎ", "ARCHIVE"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }

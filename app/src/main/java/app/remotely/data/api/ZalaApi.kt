@@ -186,6 +186,13 @@ class ZalaApi(
     suspend fun subscribedNumbers(s: Session): Set<Int> =
         ZalaParsers.subscribedNumbers(get("${s.frameBase}/action/sdk_getsubscribechannel.jsp".toHttpUrl()))
 
+    /** Found in the official «ZALA yasna» iPad app; answer only under frame1258 (frame1255/action gives 404). */
+    suspend fun balance(s: Session): java.math.BigDecimal? =
+        ZalaParsers.balance(get("${s.epgBase}/iptvepg/frame1258/sdk_getbalance.jsp".toHttpUrl()))
+
+    suspend fun packages(s: Session): List<UserPackage> =
+        ZalaParsers.packages(get("${s.epgBase}/iptvepg/frame1258/sdk_getuserorderlist.jsp".toHttpUrl()))
+
     suspend fun archiveDepths(s: Session): ArchiveDepths = ZalaParsers.archiveDepths(
         get("${s.epgBase}/iptvepg/frame1258/sdk_querytvodtstime.jsp".toHttpUrl().newBuilder()
             .addQueryParameter("terminalflag", C.TERMINAL_FLAG)

@@ -10,6 +10,7 @@ import app.remotely.core.NetworkMonitor
 import app.remotely.data.api.MemoryCookieJar
 import app.remotely.data.api.ZalaApi
 import app.remotely.data.api.zalaHttpClient
+import app.remotely.data.repo.AccountRepository
 import app.remotely.data.repo.BlackoutSchedule
 import app.remotely.data.repo.ChannelRepository
 import app.remotely.data.repo.DiskCache
@@ -65,6 +66,7 @@ class AppContainer(context: Context) {
     val epg = EpgRepository(session, api, clock)
     val operatorMessages = OperatorMessageRepository(session, api, settings, clock)
     val playback = PlaybackRepository(session, api, clock, log)
+    val account = AccountRepository({ session.withSession { api.balance(it) } }, { session.withSession { api.packages(it) } }, clock, log)
 
     val serverSettings = ServerSettings(
         read = { session.withSession { api.userData(it, ServerSettings.CELL) } },
@@ -89,6 +91,7 @@ class AppContainer(context: Context) {
 
     init {
         appScope.launch { network.available.collect { up -> player.onNetworkChanged(up); log.add(if (up) "Сеть: есть" else "Сеть: нет") } }
+        appScope.launch { session.state.collect { if (it == app.remotely.data.session.SessionState.LoggedOut) account.clear() } }
         appScope.launch {
             settings.settings.map { it.quality }.distinctUntilChanged().collect { player.setMaxHeight(it.height) }
         }

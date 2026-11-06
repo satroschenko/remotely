@@ -27,6 +27,10 @@ object ZalaTime {
 
     fun hhmm(epochMs: Long): String = HM.format(Instant.ofEpochMilli(epochMs).atZone(MINSK))
 
+    private val DMY = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+
+    fun ddmmyyyy(epochMs: Long): String = DMY.format(Instant.ofEpochMilli(epochMs).atZone(MINSK))
+
     fun localDate(epochMs: Long): LocalDate = Instant.ofEpochMilli(epochMs).atZone(MINSK).toLocalDate()
 
     /** [start, end) of a Minsk calendar day in epoch ms. */
