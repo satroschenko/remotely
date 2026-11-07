@@ -186,7 +186,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 13; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 12; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -235,11 +235,6 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
             item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
             item { Item(tr("Подписка: пакеты и баланс", "Падпіска: пакеты і баланс", "Subscription: packages and balance"), modifier = Modifier.returnHere(Page.PACKAGES)) { open(Page.PACKAGES) } }
-            item {
-                Item(tr("Баланс в меню", "Баланс у меню", "Balance in the menu"), yesNo(s.showBalance)) {
-                    scope.launch { c.settings.update { it.copy(showBalance = !it.showBalance) } }
-                }
-            }
             item {
                 // In all three languages, so whoever switched it by mistake finds the way back.
                 Item("Язык / Мова / Language", s.language.label) {
@@ -738,16 +733,17 @@ private fun DiagnosticsPage(c: AppContainer) {
 /** Настройки → «Подписка»: the packages and the balance, asked for when the page opens. */
 @Composable
 private fun PackagesPage(c: AppContainer) {
+    val s by c.settings.settings.collectAsState(Settings())
+    val scope = rememberCoroutineScope()
     val balance by c.account.balance.collectAsState()
     var packages by remember { mutableStateOf<List<UserPackage>?>(null) }
     var failed by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     LaunchedEffect(Unit) {
         launch { c.account.refreshBalance(force = true) }
         val p = c.account.packages()
         if (p == null) failed = true else packages = p
-        withFrameNanos { }
-        runCatching { first.requestFocus() }
     }
     PageFrame {
         Title(tr("Подписка", "Падпіска", "Subscription"))
@@ -755,17 +751,25 @@ private fun PackagesPage(c: AppContainer) {
             tr("Баланс", "Баланс", "Balance") + ": " + (balance?.let(AccountRepository::roubles) ?: "—"),
             fontSize = 22.sp, color = Palette.Text, modifier = Modifier.padding(bottom = 16.dp),
         )
-        val list = packages
-        when {
-            failed -> Text(tr("Не удалось узнать пакеты. Попробуйте позже", "Не ўдалося даведацца пакеты. Паспрабуйце пазней", "Could not get the packages. Try again later"), fontSize = 20.sp, color = Palette.TextDim)
-            list == null -> Text(tr("Загрузка…", "Загрузка…", "Loading…"), fontSize = 20.sp, color = Palette.TextDim)
-            list.isEmpty() -> Text(tr("Пакетов нет", "Пакетаў няма", "No packages"), fontSize = 20.sp, color = Palette.TextDim)
-            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-                items(list.withIndex().toList(), key = { it.index }) { (i, p) ->
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+            item {
+                Item(tr("Показывать баланс в меню", "Паказваць баланс у меню", "Show the balance in the menu"), yesNo(s.showBalance), Modifier.focusRequester(first)) {
+                    scope.launch { c.settings.update { it.copy(showBalance = !it.showBalance) } }
+                }
+            }
+            item {
+                Text(tr("Пакеты", "Пакеты", "Packages"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(top = 12.dp))
+            }
+            val list = packages
+            when {
+                failed -> item { Text(tr("Не удалось узнать пакеты. Попробуйте позже", "Не ўдалося даведацца пакеты. Паспрабуйце пазней", "Could not get the packages. Try again later"), fontSize = 20.sp, color = Palette.TextDim) }
+                list == null -> item { Text(tr("Загрузка…", "Загрузка…", "Loading…"), fontSize = 20.sp, color = Palette.TextDim) }
+                list.isEmpty() -> item { Text(tr("Пакетов нет", "Пакетаў няма", "No packages"), fontSize = 20.sp, color = Palette.TextDim) }
+                else -> items(list.withIndex().toList(), key = { it.index }) { (_, p) ->
                     val term = p.untilMs?.let { tr("до ${ZalaTime.ddmmyyyy(it)}", "да ${ZalaTime.ddmmyyyy(it)}", "until ${ZalaTime.ddmmyyyy(it)}") }
                         ?: tr("без срока", "без тэрміну", "no end date")
                     val price = p.price?.let { ", " + AccountRepository.roubles(it) }.orEmpty()
-                    Item(p.name, term + price, if (i == 0) Modifier.focusRequester(first) else Modifier) {}
+                    Item(p.name, term + price) {}
                 }
             }
         }
