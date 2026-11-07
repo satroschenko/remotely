@@ -77,6 +77,7 @@ import app.remotely.BuildConfig
 import app.remotely.R
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
+import app.remotely.ui.common.wheelMovesFocus
 import app.remotely.data.api.UserPackage
 import app.remotely.data.repo.AccountRepository
 import app.remotely.data.repo.GenreGroup
@@ -113,7 +114,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
                 (fadeOut(tween(160)) + slideOutHorizontally(tween(180)) { if (forward) -it / 6 else it / 6 })
         },
         label = "settingsPage",
-        modifier = Modifier.fillMaxSize().background(Palette.Background).onPreviewKeyEvent { ev ->
+        modifier = Modifier.fillMaxSize().background(Palette.Background).wheelMovesFocus().onPreviewKeyEvent { ev ->
             if (!leftIsBack || ev.key != Key.DirectionLeft) return@onPreviewKeyEvent false
             if (ev.type == KeyEventType.KeyDown) page = Page.MAIN
             true
@@ -185,7 +186,7 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
     fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
     LaunchedEffect(Unit) {
         login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 12; else -> null }
+        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 13; else -> null }
         if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
         listState.scrollToItem((index - 2).coerceAtLeast(0))
         withFrameNanos { }
@@ -234,6 +235,11 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
             item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
             item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
             item { Item(tr("Подписка: пакеты и баланс", "Падпіска: пакеты і баланс", "Subscription: packages and balance"), modifier = Modifier.returnHere(Page.PACKAGES)) { open(Page.PACKAGES) } }
+            item {
+                Item(tr("Баланс в меню", "Баланс у меню", "Balance in the menu"), yesNo(s.showBalance)) {
+                    scope.launch { c.settings.update { it.copy(showBalance = !it.showBalance) } }
+                }
+            }
             item {
                 // In all three languages, so whoever switched it by mistake finds the way back.
                 Item("Язык / Мова / Language", s.language.label) {
@@ -590,7 +596,7 @@ private fun helpSections() = listOf(
     HelpSection(tr("Архив", "Архіў", "Archive"), listOf(
         tr("Как открыть", "Як адкрыць", "How to open") to tr("▶ на канале, выбрать прошедшую передачу с пометкой «Архив», OK", "▶ на канале, выбраць мінулую перадачу з пазнакай «Архіў», OK", "▶ on a channel, pick a past programme marked «Archive», OK"),
         "OK" to tr("пауза; на паузе видно описание передачи", "паўза; на паўзе відаць апісанне перадачы", "pause; when paused the description shows"),
-        "◀ ▶" to tr("перемотка на 30 секунд (удерживать — быстрее, до 5 минут)", "перамотка на 30 секунд (утрымліваць — хутчэй, да 5 хвілін)", "seek 30 seconds (hold — faster, up to 5 minutes)"),
+        "◀ ▶" to tr("перемотка на 10 секунд (удерживать — быстрее, до 5 минут)", "перамотка на 10 секунд (утрымліваць — хутчэй, да 5 хвілін)", "seek 10 seconds (hold — faster, up to 5 minutes)"),
         "▲ ▼" to tr("следующая / предыдущая передача", "наступная / папярэдняя перадача", "next / previous programme"),
         tr("На паузе ▲ / ▼", "На паўзе ▲ / ▼", "Paused ▲ / ▼") to tr("включить или выключить субтитры / сменить звук", "уключыць або выключыць субтытры / змяніць гук", "subtitles on or off / change the sound"),
         tr("Назад", "Назад", "Back") to tr("вернуться в прямой эфир", "вярнуцца ў прамы эфір", "back to live TV"),

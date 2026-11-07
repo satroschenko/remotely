@@ -1,6 +1,10 @@
 package app.remotely
 
 import android.app.UiModeManager
+import app.remotely.ui.playback.Pip
+import android.util.Rational
+import android.os.Build
+import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
@@ -56,18 +60,40 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Space on a keyboard is OK, as on a TV with a keyboard and mouse. Only when nothing took the space itself:
-     * in the login fields it still types a space.
+     * A keyboard, as on a laptop with an Android emulator: Space is OK, Backspace and Esc are Back.
+     * Space and Backspace only when nothing took the key itself: in the login fields they still type and delete.
+     * Esc always: Compose would take it for itself and nothing would happen.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) return super.dispatchKeyEvent(event.asKey(KeyEvent.KEYCODE_BACK))
         if (super.dispatchKeyEvent(event)) return true
-        if (event.keyCode != KeyEvent.KEYCODE_SPACE) return false
-        val ok = KeyEvent(
-            event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount,
-            event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
-        )
-        return super.dispatchKeyEvent(ok)
+        val target = when (event.keyCode) {
+            KeyEvent.KEYCODE_SPACE -> KeyEvent.KEYCODE_DPAD_CENTER
+            KeyEvent.KEYCODE_DEL -> KeyEvent.KEYCODE_BACK
+            else -> return false
+        }
+        return super.dispatchKeyEvent(event.asKey(target))
     }
+
+    private fun KeyEvent.asKey(code: Int) =
+        KeyEvent(downTime, eventTime, action, code, repeatCount, metaState, deviceId, scanCode, flags, source)
+
+    /** Phone or tablet leaving the app while something plays: the video goes on in a small window. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isTv() || !Pip.canEnter()) return
+        runCatching {
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        }.onFailure { container.log.add("Окошко видео: ${it.javaClass.simpleName}") }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        Pip.active = isInPictureInPictureMode
+    }
+
+    private fun isTv() = getSystemService(UiModeManager::class.java)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
     // Back from a dialog, the keyboard or another app the bars may show again.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -81,9 +107,7 @@ class MainActivity : ComponentActivity() {
      * TV boxes have no bars, nothing changes there.
      */
     private fun hideSystemBarsOnPhone() {
-        val tv = getSystemService(UiModeManager::class.java)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
-            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-        if (tv) return
+        if (isTv()) return
         WindowCompat.getInsetsController(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())

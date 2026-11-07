@@ -86,9 +86,11 @@ class PlaybackRepository(
         ArchiveManifest.fromTimeshift(windows, fromMs, toMs).also { mpd ->
             // For the event log: when Zala answers short, this shows it.
             val gotMs = mpd?.let { ArchiveManifest.durationMs(it) } ?: 0L
-            log?.add("Отложенный просмотр: окон ${windows.size} из $count, ${gotMs / 60_000} из ${(toMs - fromMs) / 60_000} мин")
+            log?.add("Отложенный просмотр: окон ${windows.size} из $count, ${mmss(gotMs)} из ${mmss(toMs - fromMs)}")
         }
     }
+
+    private fun mmss(ms: Long) = "%d:%02d".format(ms / 60_000, ms / 1000 % 60)
 
     companion object {
         /** A recording this much shorter than the programme counts as complete (Zala's edges are not exact). */

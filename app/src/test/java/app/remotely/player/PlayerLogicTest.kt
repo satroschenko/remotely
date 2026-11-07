@@ -37,20 +37,20 @@ class SeekAccumulatorTest {
         s.press(+1, big = false, isRepeat = false, now = 0)
         s.press(+1, big = false, isRepeat = false, now = 300)
         s.press(-1, big = true, isRepeat = false, now = 500)
-        assertEquals(60_000L - 300_000L, s.pendingMs)
+        assertEquals(20_000L - 300_000L, s.pendingMs)
         assertNull(s.takeIfSettled(1_000))
-        assertEquals(-240_000L, s.takeIfSettled(1_300))
+        assertEquals(-280_000L, s.takeIfSettled(1_300))
         assertNull(s.takeIfSettled(5_000))
     }
 
     @Test fun holdAccelerates() {
         val s = SeekAccumulator()
-        s.press(+1, false, false, 0) // 30s
+        s.press(+1, false, false, 0) // 10s: a single press is a small step
         s.press(+1, false, true, 100) // throttled
         s.press(+1, false, true, 300) // 30s (held < 2s)
         s.press(+1, false, true, 2_500) // 60s
         s.press(+1, false, true, 4_500) // 5min
-        assertEquals(30_000L + 30_000 + 60_000 + 300_000, s.pendingMs)
+        assertEquals(10_000L + 30_000 + 60_000 + 300_000, s.pendingMs)
     }
 }
 
@@ -81,6 +81,12 @@ class ArchiveTimelineTest {
         assertEquals(b, tl.previous(c)) // across the gap
         assertEquals(c, tl.next(b))
         assertEquals(d, tl.next(c)) // on air: plays from its start
+    }
+
+    @Test fun nextFollowsAcrossASmallOverlapInTheGuide() {
+        val x = p("X", "15 18:00:00", "15 19:00:30")
+        val y = p("Y", "15 19:00:00", "15 20:00:00")
+        assertEquals(y, ArchiveTimeline(listOf(x, y), now, 48 * 3600_000L).next(x))
     }
 
     @Test fun noStepPastTheEnds() {
@@ -115,6 +121,16 @@ class ArchiveTimelineTest {
         assertEquals(TimelinePoint.InProgramme(d, cut), tl.onEnded(d, cut, t("15 21:10:00")))
         // The reload made at 22:00 still ends at 21:09:40: broken, go live.
         assertEquals(TimelinePoint.Live, tl.onEnded(d, cut, now))
+    }
+
+    /** Watched 20 min behind: the server's edge lagged 90 s behind the moment the recording was asked for. */
+    @Test fun laggingEdgeOfAnOldRecordingReloadsInsteadOfGoingLive() {
+        val openedAt = t("15 21:30:00")
+        val played = 28 * 60_000L + 30_000 // ends at 21:28:30
+        assertTrue(tl.ranOut(d, played, openedAt))
+        assertEquals(TimelinePoint.InProgramme(d, played), tl.onEnded(d, played, openedAt))
+        // Asked for just now and still that short: broken, live.
+        assertFalse(tl.ranOut(d, played, now - 30_000))
     }
 
     /** «Поле чудес» 19:10–20:30 opened «С начала» at 20:03, watched from the start: at 20:03 in it the programme is over. */

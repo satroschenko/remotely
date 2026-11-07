@@ -435,7 +435,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun openMenu() {
         _ui.update { it.copy(overlay = Overlay.MENU, groupsOpen = false) }
-        viewModelScope.launch { c.account.refreshBalance() }
+        if (settings.value.showBalance) viewModelScope.launch { c.account.refreshBalance() }
     }
 
     fun closeMenu() = _ui.update { it.copy(overlay = Overlay.LIST, groupsOpen = false) }

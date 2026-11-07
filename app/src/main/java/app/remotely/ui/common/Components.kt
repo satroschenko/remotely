@@ -22,7 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -40,6 +44,23 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
+
+/** The mouse wheel moves the selection like ▲ ▼ (lists, menus, settings) instead of scrolling past it. */
+fun Modifier.wheelMovesFocus(): Modifier = composed {
+    val focus = LocalFocusManager.current
+    pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val ev = awaitPointerEvent(PointerEventPass.Initial)
+                if (ev.type != PointerEventType.Scroll) continue
+                val dy = ev.changes.sumOf { it.scrollDelta.y.toDouble() }
+                if (dy == 0.0) continue
+                ev.changes.forEach { it.consume() }
+                focus.moveFocus(if (dy > 0) FocusDirection.Down else FocusDirection.Up)
+            }
+        }
+    }
+}
 
 /**
  * tv-material3 surfaces react only to the remote. This adds a mouse click / finger tap (and a long press)

@@ -43,6 +43,8 @@ data class Settings(
     val announcedUpdate: String? = null,
     /** Stop the picture this many minutes into a broadcast break so the device can fall asleep; 0 = never. */
     val breakStopMinutes: Int = 0,
+    /** The account's balance under «Меню»; some would rather not have it on show. */
+    val showBalance: Boolean = true,
     /** The operator's announcement as a ticker at start (see OperatorMessageLogic). */
     val operatorMessages: Boolean = true,
     /** Which announcement was shown and how many times, on this device. */

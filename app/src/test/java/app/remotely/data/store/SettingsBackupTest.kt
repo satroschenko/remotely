@@ -12,7 +12,7 @@ class SettingsBackupTest {
     private val mine = Settings(
         favorites = listOf("ch1", "ch2"), hidden = setOf("ch9"), order = listOf("ch2", "ch1"), lastChannel = "ch1",
         fontSize = FontSize.XLARGE, quality = Quality.P720, autostart = true, subtitles = true, genreColors = true, autoCheckUpdates = false,
-        announcedUpdate = "1.20", audio = mapOf("ch7" to "en"),
+        announcedUpdate = "1.20", audio = mapOf("ch7" to "en"), showBalance = false,
     )
 
     @Test fun roundTripKeepsSettingsButNotDeviceState() {

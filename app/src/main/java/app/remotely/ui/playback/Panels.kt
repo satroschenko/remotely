@@ -434,7 +434,8 @@ fun BoxScope.SideMenu(
         } else {
             Text(tr("Меню", "Меню", "Menu"), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Palette.Text)
             val balance by vm.balance.collectAsState()
-            balance?.let {
+            val showBalance = vm.settings.collectAsState().value.showBalance
+            balance?.takeIf { showBalance }?.let {
                 Text(
                     buildAnnotatedString {
                         append(tr("Ваш баланс", "Ваш баланс", "Your balance") + ": ")
@@ -906,12 +907,16 @@ fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
 @Composable
 private fun Framed(colour: Color, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(5.dp)
+    // One height for every plate («Сейчас» with its dot, «▶ Архив» with its arrow), following the text size.
+    val height = with(LocalDensity.current) { FRAMED_HEIGHT.toDp() }
     Row(
-        Modifier.border(1.5.dp, colour, shape).padding(horizontal = 6.dp, vertical = 1.dp),
+        Modifier.height(height).border(1.5.dp, colour, shape).padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) { content() }
 }
+
+private val FRAMED_HEIGHT = 24.sp
 
 /**
  * «АРХИВ» in a frame of the app's yellow with a pulsing yellow dot on a dark plate: readable on a bright picture, and

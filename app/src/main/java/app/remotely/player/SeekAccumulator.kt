@@ -2,7 +2,7 @@ package app.remotely.player
 
 /**
  * Collects D-pad seek presses into one pending jump, applied after [debounceMs] of silence.
- * Left/Right: 30 s, growing to 1 min and 5 min while held; Up/Down ("big"): 5 min.
+ * Left/Right: 10 s a press; held, 30 s growing to 1 min and 5 min; Up/Down ("big"): 5 min.
  */
 class SeekAccumulator(private val debounceMs: Long = 800, private val repeatThrottleMs: Long = 250) {
     var pendingMs: Long = 0
@@ -22,7 +22,8 @@ class SeekAccumulator(private val debounceMs: Long = 800, private val repeatThro
         val held = now - holdStart
         val step = when {
             big -> 300_000L
-            !isRepeat || held < 2_000 -> 30_000L
+            !isRepeat -> 10_000L
+            held < 2_000 -> 30_000L
             held < 4_000 -> 60_000L
             else -> 300_000L
         }

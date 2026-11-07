@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -34,6 +35,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -106,12 +109,18 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         if (fullscreenKeys) repeat(10) { if (runCatching { rootFocus.requestFocus() }.isSuccess) return@LaunchedEffect; delay(50) }
     }
 
-    val withPanel = ui.overlay != Overlay.NONE
+    // Phones: leaving the app while something plays shrinks the video into a small window (Pip).
+    val playing = ps.phase == Phase.PLAYING || ps.phase == Phase.CONNECTING || ps.phase == Phase.RECONNECTING
+    SideEffect { Pip.watching = playing && !ps.paused }
+    DisposableEffect(Unit) { onDispose { Pip.watching = false } }
+    val pip = Pip.active
+    val withPanel = ui.overlay != Overlay.NONE && !pip
     // A touch or mouse click can leave nothing focused; Back then bypasses the key handler below
     // and would close the app. Route it the same way.
     BackHandler { if (blocking && ui.dialog == null) vm.askExit() else vm.onBack() }
     // Pointer handlers live as long as the screen; they read the current state through this.
     val state = rememberUpdatedState(PointerState(ui, blocking, fullscreenKeys))
+    val focusManager = LocalFocusManager.current
 
     Box(
         Modifier
@@ -168,7 +177,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     }
                 }
             }
-            // Mouse: the right button is Back everywhere; the wheel zaps (live) or seeks (archive) in fullscreen.
+            // Mouse: the right button is Back everywhere; the wheel zaps (live) or seeks (archive) in fullscreen,
+            // over the list, the menu and the guide it moves the selection like ▲ ▼.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -179,13 +189,16 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                                 ev.changes.forEach { it.consume() }
                                 if (s.blocking && s.ui.dialog == null) vm.askExit() else vm.onBack()
                             }
-                            PointerEventType.Scroll -> if (s.fullscreen) {
+                            PointerEventType.Scroll -> {
                                 val dy = ev.changes.sumOf { it.scrollDelta.y.toDouble() }
                                 if (dy != 0.0) {
                                     ev.changes.forEach { it.consume() }
                                     val towardsEnd = dy > 0 // wheel down, like the Down key
-                                    if (s.ui.archive != null) vm.seekPress(if (towardsEnd) -1 else +1, false, false)
-                                    else vm.stepChannel(if (towardsEnd) -1 else +1)
+                                    when {
+                                        !s.fullscreen -> focusManager.moveFocus(if (towardsEnd) FocusDirection.Down else FocusDirection.Up)
+                                        s.ui.archive != null -> vm.seekPress(if (towardsEnd) -1 else +1, false, false)
+                                        else -> vm.stepChannel(if (towardsEnd) -1 else +1)
+                                    }
                                 }
                             }
                         }
@@ -198,10 +211,12 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         // Browsing the list: the old channel's picture and sound go at once, the new picture shows when it plays.
         val shown = ps.target?.channel?.code
         val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
-        val hideVideo = oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT
+        val hideVideo = !pip && (oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT)
         LaunchedEffect(oldChannel) { c.engine.player.volume = if (oldChannel) 0f else 1f }
         VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo, keepScreenOn = ps.phase != Phase.SLEEPING)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
+        // In the small window only the picture: the panels and messages come back with the app.
+        if (pip) return@Box
         // A click or tap on the video does what OK does; a vertical swipe does what Up/Down do.
         if (fullscreenKeys) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) {
