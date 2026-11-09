@@ -34,7 +34,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.pointer.pointerInput
@@ -177,18 +176,14 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     }
                 }
             }
-            // Mouse: the right button is Back everywhere; the wheel zaps (live) or seeks (archive) in fullscreen,
-            // over the list, the menu and the guide it moves the selection like ▲ ▼.
+            // Mouse: the wheel zaps (live) or seeks (archive) in fullscreen, over the list, the menu and the guide
+            // it moves the selection like ▲ ▼. The right button is Back, turned into the key by MainActivity.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
                         val ev = awaitPointerEvent(PointerEventPass.Initial)
                         val s = state.value
                         when (ev.type) {
-                            PointerEventType.Press -> if (ev.buttons.isSecondaryPressed) {
-                                ev.changes.forEach { it.consume() }
-                                if (s.blocking && s.ui.dialog == null) vm.askExit() else vm.onBack()
-                            }
                             PointerEventType.Scroll -> {
                                 val dy = ev.changes.sumOf { it.scrollDelta.y.toDouble() }
                                 if (dy != 0.0) {

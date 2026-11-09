@@ -8,7 +8,11 @@ import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -77,6 +81,39 @@ class MainActivity : ComponentActivity() {
 
     private fun KeyEvent.asKey(code: Int) =
         KeyEvent(downTime, eventTime, action, code, repeatCount, metaState, deviceId, scanCode, flags, source)
+
+    /**
+     * The right mouse button is Back on every screen, like Backspace. The window takes the whole click
+     * itself, so nothing is left for the system: on some phones an unclaimed right click leaves the app.
+     */
+    private var rightClick = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean = takeRightClick(ev) || super.dispatchTouchEvent(ev)
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean = takeRightClick(ev) || super.dispatchGenericMotionEvent(ev)
+
+    private fun takeRightClick(ev: MotionEvent): Boolean {
+        if (!ev.isFromSource(InputDevice.SOURCE_MOUSE)) return false
+        val secondary = ev.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_BUTTON_PRESS -> if (secondary && !rightClick) {
+                rightClick = true
+                pressBack()
+            }
+        }
+        if (!rightClick) return false
+        val released = ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL ||
+            (ev.actionMasked == MotionEvent.ACTION_BUTTON_RELEASE && !secondary)
+        if (released && !secondary) rightClick = false
+        return true
+    }
+
+    private fun pressBack() {
+        val now = SystemClock.uptimeMillis()
+        for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+            dispatchKeyEvent(KeyEvent(now, now, action, KeyEvent.KEYCODE_BACK, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD))
+        }
+    }
 
     /** Phone or tablet leaving the app while something plays: the video goes on in a small window. */
     override fun onUserLeaveHint() {

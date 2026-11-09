@@ -98,6 +98,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import androidx.tv.material3.LocalTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import app.remotely.core.ZalaTime
 import app.remotely.data.api.Channel
 import app.remotely.data.repo.AccountRepository
@@ -686,11 +688,8 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
             }
             when {
                 // In frames: with high-contrast text the words lose their colour, the frames keep it.
-                onAir -> Framed(Palette.OnAir) {
-                    PulsingDot(Palette.OnAir)
-                    Text(tr("Сейчас", "Зараз", "Now"), fontSize = 15.sp, color = Palette.OnAir)
-                }
-                past && recordable -> Framed(Palette.Accent) { Text("▶ " + tr("Архив", "Архіў", "Archive"), fontSize = 15.sp, color = Palette.Accent) }
+                onAir -> Framed(Palette.OnAir, now = true)
+                past && recordable -> Framed(Palette.Accent, now = false)
             }
         }
     }
@@ -903,20 +902,46 @@ fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * «● Сейчас» or «▶ Архив» in a thin rounded frame of [colour]: the colour survives high-contrast text.
+ * Both plates are one size, following the text size: the other label is laid out invisibly underneath,
+ * so the frame takes the wider of the two in any language.
+ */
+@Composable
+private fun Framed(colour: Color, now: Boolean) = Framed(colour) {
+    Box(contentAlignment = Alignment.Center) {
+        PlateLabel(now = !now, colour, Modifier.alpha(0f))
+        PlateLabel(now = now, colour)
+    }
+}
+
 /** A thin rounded frame in [colour] around a short label: the colour survives high-contrast text. */
 @Composable
 private fun Framed(colour: Color, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(5.dp)
-    // One height for every plate («Сейчас» with its dot, «▶ Архив» with its arrow), following the text size.
+    // One height for every plate, following the text size.
     val height = with(LocalDensity.current) { FRAMED_HEIGHT.toDp() }
     Row(
         Modifier.height(height).border(1.5.dp, colour, shape).padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) { content() }
 }
 
-private val FRAMED_HEIGHT = 24.sp
+@Composable
+private fun PlateLabel(now: Boolean, colour: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Trimmed line box: the text sits in the middle of the frame and «р» does not touch its edge.
+        val style = LocalTextStyle.current.copy(lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both))
+        if (now) {
+            PulsingDot(colour)
+            Text(tr("Сейчас", "Зараз", "Now"), fontSize = 15.sp, color = colour, style = style)
+        } else {
+            Text("▶ " + tr("Архив", "Архіў", "Archive"), fontSize = 15.sp, color = colour, style = style)
+        }
+    }
+}
+
+private val FRAMED_HEIGHT = 26.sp
 
 /**
  * «АРХИВ» in a frame of the app's yellow with a pulsing yellow dot on a dark plate: readable on a bright picture, and
