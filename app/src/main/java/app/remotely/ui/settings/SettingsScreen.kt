@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -43,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -99,37 +102,54 @@ import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
 import kotlinx.coroutines.launch
 
-private enum class Page { MAIN, CHANNELS, HELP, UPDATES, DIAGNOSTICS, PACKAGES }
+/**
+ * The main page holds groups; a group holds the switches. «О приложении» goes one level deeper (help, updates,
+ * diagnostics). Back and ← walk one level up.
+ */
+private enum class Page(val parent: Page?) {
+    MAIN(null),
+    CHANNELS(MAIN), PICTURE(MAIN), WATCHING(MAIN), ACCOUNT(MAIN), BACKUP(MAIN), ABOUT(MAIN),
+    HELP(ABOUT), UPDATES(ABOUT), DIAGNOSTICS(ABOUT);
+
+    val depth: Int get() = parent?.let { it.depth + 1 } ?: 0
+}
 
 @UnstableApi
 @Composable
 fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit) {
     var page by remember { mutableStateOf(Page.MAIN) }
-    var openedFrom by remember { mutableStateOf<Page?>(null) }
-    BackHandler { if (page == Page.MAIN) onBack() else page = Page.MAIN }
+    // The page we came back from, per page that opened it: the focus returns to the item that opened it.
+    val openedFrom = remember { mutableStateMapOf<Page, Page>() }
+    fun up() { page.parent?.let { page = it } ?: onBack() }
+    fun open(p: Page) { openedFrom[page] = p; page = p }
+    BackHandler { up() }
     // On pages without sideways controls ← goes back too, like Back.
-    val leftIsBack = page == Page.HELP || page == Page.UPDATES || page == Page.DIAGNOSTICS || page == Page.PACKAGES
+    val leftIsBack = page != Page.MAIN && page != Page.CHANNELS
     AnimatedContent(
         targetState = page,
         transitionSpec = {
-            val forward = targetState != Page.MAIN
+            val forward = targetState.depth > initialState.depth
             (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { if (forward) it / 5 else -it / 5 }) togetherWith
                 (fadeOut(tween(160)) + slideOutHorizontally(tween(180)) { if (forward) -it / 6 else it / 6 })
         },
         label = "settingsPage",
         modifier = Modifier.fillMaxSize().background(Palette.Background).wheelMovesFocus().onPreviewKeyEvent { ev ->
             if (!leftIsBack || ev.key != Key.DirectionLeft) return@onPreviewKeyEvent false
-            if (ev.type == KeyEventType.KeyDown) page = Page.MAIN
+            if (ev.type == KeyEventType.KeyDown) up()
             true
         },
     ) { p ->
         when (p) {
-            Page.MAIN -> MainPage(c, onBack, onLoggedOut, returnFrom = openedFrom) { openedFrom = it; page = it }
+            Page.MAIN -> MainPage(c, onBack, returnFrom = openedFrom[Page.MAIN], open = ::open)
             Page.CHANNELS -> ChannelsPage(c)
+            Page.PICTURE -> PicturePage(c)
+            Page.WATCHING -> WatchingPage(c)
+            Page.ACCOUNT -> AccountPage(c, onLoggedOut)
+            Page.BACKUP -> BackupPage(c)
+            Page.ABOUT -> AboutPage(c, returnFrom = openedFrom[Page.ABOUT], open = ::open)
             Page.HELP -> HelpPage()
             Page.UPDATES -> UpdatesPage(c)
             Page.DIAGNOSTICS -> DiagnosticsPage(c)
-            Page.PACKAGES -> PackagesPage(c)
         }
     }
 }
@@ -166,38 +186,172 @@ private fun Item(text: String, value: String? = null, modifier: Modifier = Modif
     }
 }
 
+/** Focus on a list page: the first item, or back on the item that opened the page we return from. */
+private class PageFocus(private val returnFrom: Page?) {
+    val first = FocusRequester()
+    val back = FocusRequester()
+    fun opener(p: Page): Modifier = if (p == returnFrom) Modifier.focusRequester(back) else Modifier
+}
+
+@Composable
+private fun rememberPageFocus(listState: LazyListState, returnFrom: Page? = null, returnIndex: Int? = null): PageFocus {
+    val f = remember { PageFocus(returnFrom) }
+    LaunchedEffect(Unit) {
+        if (returnIndex != null) {
+            listState.scrollToItem((returnIndex - 2).coerceAtLeast(0))
+            withFrameNanos { }
+            if (runCatching { f.back.requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+        runCatching { f.first.requestFocus() }
+    }
+    return f
+}
+
+@Composable
+private fun MenuList(listState: LazyListState, content: LazyListScope.() -> Unit) {
+    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp), content = content)
+}
+
+@Composable
+private fun Note(text: String) {
+    Text(text, fontSize = 16.sp, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+}
+
+private val MAIN_ORDER = listOf(Page.CHANNELS, Page.PICTURE, Page.WATCHING, Page.ACCOUNT, Page.BACKUP, Page.ABOUT)
+
 @UnstableApi
 @Composable
-private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit, returnFrom: Page?, open: (Page) -> Unit) {
+private fun MainPage(c: AppContainer, onBack: () -> Unit, returnFrom: Page?, open: (Page) -> Unit) {
+    val s by c.settings.settings.collectAsState(Settings())
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val focus = rememberPageFocus(listState, returnFrom, returnFrom?.let { MAIN_ORDER.indexOf(it) + 1 }?.takeIf { it > 0 })
+    val update by c.updates.state.collectAsState()
+    val newVersion = (update as? UpdateState.Available)?.release?.version
+    PageFrame {
+        Title(tr("Настройки", "Налады", "Settings"))
+        MenuList(listState) {
+            item { Item("← " + tr("Вернуться к просмотру", "Вярнуцца да прагляду", "Back to watching"), modifier = Modifier.focusRequester(focus.first), onClick = onBack) }
+            item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = focus.opener(Page.CHANNELS)) { open(Page.CHANNELS) } }
+            item { Item(tr("Изображение: качество, шрифт, субтитры", "Выява: якасць, шрыфт, субтытры", "Picture: quality, text size, subtitles"), modifier = focus.opener(Page.PICTURE)) { open(Page.PICTURE) } }
+            item { Item(tr("Просмотр: таймер сна, перерывы, автозапуск", "Прагляд: таймер сну, перапынкі, аўтазапуск", "Watching: sleep timer, breaks, autostart"), modifier = focus.opener(Page.WATCHING)) { open(Page.WATCHING) } }
+            item { Item(tr("Подписка и аккаунт", "Падпіска і акаўнт", "Subscription and account"), modifier = focus.opener(Page.ACCOUNT)) { open(Page.ACCOUNT) } }
+            item { Item(tr("Сохранить или загрузить настройки", "Захаваць або загрузіць налады", "Save or load the settings"), modifier = focus.opener(Page.BACKUP)) { open(Page.BACKUP) } }
+            item {
+                Item(
+                    tr("О приложении: помощь, обновления", "Пра праграму: дапамога, абнаўленні", "About: help, updates"),
+                    newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"),
+                    focus.opener(Page.ABOUT),
+                ) { open(Page.ABOUT) }
+            }
+            item {
+                // In all three languages and on the first page, so whoever switched it by mistake finds the way back.
+                Item("Язык / Мова / Language", s.language.label) {
+                    scope.launch { c.settings.update { it.copy(language = it.language.next()) } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PicturePage(c: AppContainer) {
+    val s by c.settings.settings.collectAsState(Settings())
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val focus = rememberPageFocus(listState)
+    PageFrame {
+        Title(tr("Изображение", "Выява", "Picture"))
+        MenuList(listState) {
+            item {
+                Item(tr("Качество видео", "Якасць відэа", "Video quality"), s.quality.label, Modifier.focusRequester(focus.first)) {
+                    scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
+                }
+            }
+            item {
+                Item(tr("Размер шрифта", "Памер шрыфта", "Text size"), s.fontSize.label) {
+                    scope.launch { c.settings.update { it.copy(fontSize = it.fontSize.next()) } }
+                }
+            }
+            item {
+                Item(tr("Субтитры (где есть)", "Субтытры (дзе ёсць)", "Subtitles (where available)"), yesNo(s.subtitles)) {
+                    scope.launch { c.settings.update { it.copy(subtitles = !it.subtitles) } }
+                }
+            }
+            item {
+                Item(tr("Цвет жанров", "Колер жанраў", "Genre colours"), yesNo(s.genreColors)) {
+                    scope.launch { c.settings.update { it.copy(genreColors = !it.genreColors) } }
+                }
+            }
+        }
+    }
+}
+
+@UnstableApi
+@Composable
+private fun WatchingPage(c: AppContainer) {
     val s by c.settings.settings.collectAsState(Settings())
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    var login by remember { mutableStateOf("") }
-    var confirmLogout by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val focus = rememberPageFocus(listState)
+    PageFrame {
+        Title(tr("Просмотр", "Прагляд", "Watching"))
+        MenuList(listState) {
+            item {
+                var changes by remember { mutableStateOf(0) }
+                val left = remember(changes) { c.sleep.label(c.clock.nowMs()) }
+                Item(tr("Таймер сна", "Таймер сну", "Sleep timer"), left, Modifier.focusRequester(focus.first)) {
+                    c.sleep.cycle(c.clock.nowMs())
+                    changes++
+                }
+            }
+            item {
+                Item(tr("В перерыв вещания выключать", "У перапынак вяшчання выключаць", "Turn off in a broadcast break"), if (s.breakStopMinutes > 0) tr("через ${s.breakStopMinutes} мин", "праз ${s.breakStopMinutes} хв", "after ${s.breakStopMinutes} min") else yesNo(false)) {
+                    scope.launch {
+                        c.settings.update {
+                            val all = SleepTimer.BREAK_CHOICES
+                            it.copy(breakStopMinutes = all[(all.indexOf(it.breakStopMinutes) + 1) % all.size])
+                        }
+                    }
+                }
+            }
+            item {
+                Item(tr("Сообщения оператора", "Паведамленні аператара", "Operator announcements"), yesNo(s.operatorMessages)) {
+                    // Turning them on again shows the current message again from the start.
+                    scope.launch { c.settings.update { it.copy(operatorMessages = !it.operatorMessages, operatorMessageKey = null, operatorMessageShows = 0) } }
+                }
+            }
+            item {
+                Item(tr("Запускать при включении приставки", "Запускаць пры ўключэнні прыстаўкі", "Start when the box turns on"), yesNo(s.autostart)) {
+                    val enable = !s.autostart
+                    scope.launch { c.settings.update { it.copy(autostart = enable) } }
+                    // Android 10+ needs "display over other apps" to start from boot.
+                    if (enable && !AndroidSettings.canDrawOverlays(ctx)) {
+                        runCatching {
+                            ctx.startActivity(Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@UnstableApi
+@Composable
+private fun BackupPage(c: AppContainer) {
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val focus = rememberPageFocus(listState)
     var confirmLoad by remember { mutableStateOf(false) }
     var serverBusy by remember { mutableStateOf(false) }
     var serverToast by remember { mutableStateOf<String?>(null) }
     var toastJob by remember { mutableStateOf<Job?>(null) }
-    val first = remember { FocusRequester() }
-    // The dialog takes the focus; on close it goes back to the server item that opened it.
-    val saveItem = remember { FocusRequester() }
+    // The dialog takes the focus; on close it goes back to the item that opened it.
+    val saveItem = focus.first
     val loadItem = remember { FocusRequester() }
     var serverItem by remember { mutableStateOf(saveItem) }
-    // Back from a sub-page the focus returns to the item that opened it.
-    val back = remember { FocusRequester() }
-    val listState = rememberLazyListState()
-    fun Modifier.returnHere(p: Page) = if (p == returnFrom) focusRequester(back) else this
-    LaunchedEffect(Unit) {
-        login = c.currentLogin() ?: ""
-        val index = when (returnFrom) { Page.HELP -> 1; Page.UPDATES -> 2; Page.CHANNELS -> 3; Page.PACKAGES -> 4; Page.DIAGNOSTICS -> 12; else -> null }
-        if (index == null) { runCatching { first.requestFocus() }; return@LaunchedEffect }
-        listState.scrollToItem((index - 2).coerceAtLeast(0))
-        withFrameNanos { }
-        if (runCatching { back.requestFocus() }.isFailure) runCatching { first.requestFocus() }
-    }
-
-    val update by c.updates.state.collectAsState()
-    val newVersion = (update as? UpdateState.Available)?.release?.version
 
     fun refocusServerItem() = scope.launch { withFrameNanos { }; runCatching { serverItem.requestFocus() } }
     fun closeServerDialog() {
@@ -217,89 +371,18 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
         }
     }
 
-    BackHandler(enabled = confirmLogout) { confirmLogout = false }
     BackHandler(enabled = confirmLoad) { closeServerDialog() }
     PageFrame(dialog = {
-        when {
-            confirmLogout -> LogoutDialog(c, onLoggedOut) { confirmLogout = false }
-            confirmLoad -> MessageDialog(
-                tr("Загрузить настройки с сервера?", "Загрузіць налады з сервера?", "Load the settings from the server?"), tr("Избранное, порядок каналов и настройки заменятся сохранёнными", "Абранае, парадак каналаў і налады заменяцца захаванымі", "Favourites, channel order and settings will be replaced with the saved ones"),
-                listOf(tr("Загрузить", "Загрузіць", "Load") to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, tr("Отмена", "Скасаваць", "Cancel") to ::closeServerDialog),
-            )
-        }
+        if (confirmLoad) MessageDialog(
+            tr("Загрузить настройки с сервера?", "Загрузіць налады з сервера?", "Load the settings from the server?"), tr("Избранное, порядок каналов и настройки заменятся сохранёнными", "Абранае, парадак каналаў і налады заменяцца захаванымі", "Favourites, channel order and settings will be replaced with the saved ones"),
+            listOf(tr("Загрузить", "Загрузіць", "Load") to { confirmLoad = false; refocusServerItem(); runOnServer(loadItem) { c.serverSettings.load() } }, tr("Отмена", "Скасаваць", "Cancel") to ::closeServerDialog),
+        )
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             AnimatedNullable(serverToast, enter = Motion.fromTop, exit = Motion.toTop) { Toast(it) }
         }
     }) {
-        Title(tr("Настройки", "Налады", "Settings"))
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-            item { Item("← " + tr("Вернуться к просмотру", "Вярнуцца да прагляду", "Back to watching"), modifier = Modifier.focusRequester(first), onClick = onBack) }
-            item { Item(tr("Как пользоваться / наш сайт", "Як карыстацца / наш сайт", "How to use / our website"), modifier = Modifier.returnHere(Page.HELP)) { open(Page.HELP) } }
-            item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), Modifier.returnHere(Page.UPDATES)) { open(Page.UPDATES) } }
-            item { Item(tr("Каналы: скрыть, избранное, порядок", "Каналы: схаваць, абранае, парадак", "Channels: hide, favourites, order"), modifier = Modifier.returnHere(Page.CHANNELS)) { open(Page.CHANNELS) } }
-            item { Item(tr("Подписка: пакеты и баланс", "Падпіска: пакеты і баланс", "Subscription: packages and balance"), modifier = Modifier.returnHere(Page.PACKAGES)) { open(Page.PACKAGES) } }
-            item {
-                // In all three languages, so whoever switched it by mistake finds the way back.
-                Item("Язык / Мова / Language", s.language.label) {
-                    scope.launch { c.settings.update { it.copy(language = it.language.next()) } }
-                }
-            }
-            item {
-                Item(tr("Размер шрифта", "Памер шрыфта", "Text size"), s.fontSize.label) {
-                    scope.launch { c.settings.update { it.copy(fontSize = it.fontSize.next()) } }
-                }
-            }
-            item {
-                Item(tr("Качество видео", "Якасць відэа", "Video quality"), s.quality.label) {
-                    scope.launch { c.settings.update { it.copy(quality = it.quality.next()) } }
-                }
-            }
-            item {
-                var changes by remember { mutableStateOf(0) }
-                val left = remember(changes) { c.sleep.label(c.clock.nowMs()) }
-                Item(tr("Таймер сна", "Таймер сну", "Sleep timer"), left) {
-                    c.sleep.cycle(c.clock.nowMs())
-                    changes++
-                }
-            }
-            item {
-                Item(tr("В перерыв вещания выключать", "У перапынак вяшчання выключаць", "Turn off in a broadcast break"), if (s.breakStopMinutes > 0) tr("через ${s.breakStopMinutes} мин", "праз ${s.breakStopMinutes} хв", "after ${s.breakStopMinutes} min") else yesNo(false)) {
-                    scope.launch {
-                        c.settings.update {
-                            val all = SleepTimer.BREAK_CHOICES
-                            it.copy(breakStopMinutes = all[(all.indexOf(it.breakStopMinutes) + 1) % all.size])
-                        }
-                    }
-                }
-            }
-            item {
-                Item(tr("Субтитры (где есть)", "Субтытры (дзе ёсць)", "Subtitles (where available)"), yesNo(s.subtitles)) {
-                    scope.launch { c.settings.update { it.copy(subtitles = !it.subtitles) } }
-                }
-            }
-            item {
-                Item(tr("Сообщения оператора", "Паведамленні аператара", "Operator announcements"), yesNo(s.operatorMessages)) {
-                    // Turning them on again shows the current message again from the start.
-                    scope.launch { c.settings.update { it.copy(operatorMessages = !it.operatorMessages, operatorMessageKey = null, operatorMessageShows = 0) } }
-                }
-            }
-            item {
-                Item(tr("Цвет жанров", "Колер жанраў", "Genre colours"), yesNo(s.genreColors)) {
-                    scope.launch { c.settings.update { it.copy(genreColors = !it.genreColors) } }
-                }
-            }
-            item {
-                Item(tr("Запускать при включении приставки", "Запускаць пры ўключэнні прыстаўкі", "Start when the box turns on"), yesNo(s.autostart)) {
-                    val enable = !s.autostart
-                    scope.launch { c.settings.update { it.copy(autostart = enable) } }
-                    // Android 10+ needs "display over other apps" to start from boot.
-                    if (enable && !AndroidSettings.canDrawOverlays(ctx)) {
-                        runCatching {
-                            ctx.startActivity(Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        }
-                    }
-                }
-            }
+        Title(tr("Сохранение настроек", "Захаванне налад", "Saving the settings"))
+        MenuList(listState) {
             item {
                 Item(tr("Сохранить настройки на сервер", "Захаваць налады на сервер", "Save settings to the server"), if (serverBusy && serverItem == saveItem) "…" else null, Modifier.focusRequester(saveItem)) {
                     runOnServer(saveItem) { c.serverSettings.save() }
@@ -310,13 +393,34 @@ private fun MainPage(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Uni
                     if (!serverBusy) { serverItem = loadItem; confirmLoad = true }
                 }
             }
-            item { Item(tr("Диагностика", "Дыягностыка", "Diagnostics"), modifier = Modifier.returnHere(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
-            item { Item(tr("Аккаунт", "Акаўнт", "Account"), login) {} }
-            item { Item(tr("Выйти из аккаунта", "Выйсці з акаўнта", "Sign out")) { confirmLogout = true } }
+            item {
+                Note(tr(
+                    "Избранное, скрытые каналы, порядок, выбранный звук, субтитры и цвет жанров хранятся на сервере Zala под вашим логином. Сохраните на одной приставке — загрузите на другой или после переустановки.",
+                    "Абранае, схаваныя каналы, парадак, выбраны гук, субтытры і колер жанраў захоўваюцца на серверы Zala пад вашым лагінам. Захавайце на адной прыстаўцы — загрузіце на іншай або пасля пераўсталёўкі.",
+                    "Favourites, hidden channels, order, chosen sound, subtitles and genre colours are kept on the Zala server under your login. Save on one box, load on another or after reinstalling.",
+                ))
+            }
         }
     }
 }
 
+@UnstableApi
+@Composable
+private fun AboutPage(c: AppContainer, returnFrom: Page?, open: (Page) -> Unit) {
+    val listState = rememberLazyListState()
+    val order = listOf(Page.HELP, Page.UPDATES, Page.DIAGNOSTICS)
+    val focus = rememberPageFocus(listState, returnFrom, returnFrom?.let { order.indexOf(it) }?.takeIf { it >= 0 })
+    val update by c.updates.state.collectAsState()
+    val newVersion = (update as? UpdateState.Available)?.release?.version
+    PageFrame {
+        Title(tr("О приложении", "Пра праграму", "About"))
+        MenuList(listState) {
+            item { Item(tr("Как пользоваться / наш сайт", "Як карыстацца / наш сайт", "How to use / our website"), modifier = Modifier.focusRequester(focus.first).then(focus.opener(Page.HELP))) { open(Page.HELP) } }
+            item { Item(tr("Обновления", "Абнаўленні", "Updates"), newVersion?.let { tr("есть версия $it", "ёсць версія $it", "version $it is out") } ?: tr("версия ${BuildConfig.VERSION_NAME}", "версія ${BuildConfig.VERSION_NAME}", "version ${BuildConfig.VERSION_NAME}"), focus.opener(Page.UPDATES)) { open(Page.UPDATES) } }
+            item { Item(tr("Диагностика", "Дыягностыка", "Diagnostics"), modifier = focus.opener(Page.DIAGNOSTICS)) { open(Page.DIAGNOSTICS) } }
+        }
+    }
+}
 private fun serverResultText(r: ServerSettings.Result, saving: Boolean): String = when (r) {
     ServerSettings.Result.Saved -> tr("Настройки сохранены на сервер", "Налады захаваны на сервер", "Settings saved to the server")
     is ServerSettings.Result.Loaded -> tr("Настройки загружены с сервера", "Налады загружаны з сервера", "Settings loaded from the server")
@@ -615,7 +719,7 @@ private fun helpSections() = listOf(
         tr("Цифры", "Лічбы", "Digits") to tr("набрать номер канала, как в списке", "набраць нумар канала, як у спісе", "dial a channel number as in the list"),
     )),
     HelpSection(
-        tr("Цвет жанров (Настройки → «Цвет жанров»)", "Колер жанраў (Налады → «Колер жанраў»)", "Genre colours (Settings → «Genre colours»)"),
+        tr("Цвет жанров (Настройки → Изображение)", "Колер жанраў (Налады → Выява)", "Genre colours (Settings → Picture)"),
         legendOrder.map { it.colour to it.label },
         swatches = legendOrder.map { it.argb },
     ),
@@ -777,30 +881,38 @@ private fun DiagnosticsPage(c: AppContainer) {
     }
 }
 
-/** Настройки → «Подписка»: the packages and the balance, asked for when the page opens. */
+/**
+ * Настройки → «Подписка и аккаунт»: the balance and the packages, asked for when the page opens; the login and
+ * «Выйти из аккаунта» at the bottom, out of the way of a stray press.
+ */
+@UnstableApi
 @Composable
-private fun PackagesPage(c: AppContainer) {
+private fun AccountPage(c: AppContainer, onLoggedOut: () -> Unit) {
     val s by c.settings.settings.collectAsState(Settings())
     val scope = rememberCoroutineScope()
     val balance by c.account.balance.collectAsState()
     var packages by remember { mutableStateOf<List<UserPackage>?>(null) }
     var failed by remember { mutableStateOf(false) }
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    var login by remember { mutableStateOf("") }
+    var confirmLogout by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val focus = rememberPageFocus(listState)
     LaunchedEffect(Unit) {
+        login = c.currentLogin() ?: ""
         launch { c.account.refreshBalance(force = true) }
         val p = c.account.packages()
         if (p == null) failed = true else packages = p
     }
-    PageFrame {
-        Title(tr("Подписка", "Падпіска", "Subscription"))
+    BackHandler(enabled = confirmLogout) { confirmLogout = false }
+    PageFrame(dialog = { if (confirmLogout) LogoutDialog(c, onLoggedOut) { confirmLogout = false } }) {
+        Title(tr("Подписка и аккаунт", "Падпіска і акаўнт", "Subscription and account"))
         Text(
             tr("Баланс", "Баланс", "Balance") + ": " + (balance?.let(AccountRepository::roubles) ?: "—"),
             fontSize = 22.sp, color = Palette.Text, modifier = Modifier.padding(bottom = 16.dp),
         )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+        MenuList(listState) {
             item {
-                Item(tr("Показывать баланс в меню", "Паказваць баланс у меню", "Show the balance in the menu"), yesNo(s.showBalance), Modifier.focusRequester(first)) {
+                Item(tr("Показывать баланс в меню", "Паказваць баланс у меню", "Show the balance in the menu"), yesNo(s.showBalance), Modifier.focusRequester(focus.first)) {
                     scope.launch { c.settings.update { it.copy(showBalance = !it.showBalance) } }
                 }
             }
@@ -819,6 +931,11 @@ private fun PackagesPage(c: AppContainer) {
                     Item(p.name, term + price) {}
                 }
             }
+            item {
+                Text(tr("Аккаунт", "Акаўнт", "Account"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Palette.Text, modifier = Modifier.padding(top = 12.dp))
+            }
+            item { Item(tr("Логин", "Лагін", "Login"), login) {} }
+            item { Item(tr("Выйти из аккаунта", "Выйсці з акаўнта", "Sign out")) { confirmLogout = true } }
         }
     }
 }
