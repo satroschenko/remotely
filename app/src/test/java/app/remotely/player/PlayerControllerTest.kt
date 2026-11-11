@@ -51,7 +51,9 @@ class FakeStreams : StreamSource {
     var error: () -> Exception = { IOException("net") }
     var n = 0
     var delayMs = 0L
+    var liveDelayMs = 0L
     override suspend fun liveUrl(ch: Channel): String {
+        kotlinx.coroutines.delay(liveDelayMs)
         if (failures > 0) { failures--; throw error() }
         return "live-${ch.code}-${++n}"
     }
@@ -73,6 +75,23 @@ class PlayerControllerTest {
         val clock = Clock { testScheduler.currentTime }
         val c = PlayerController(engine, streams, clock, backgroundScope, EventLog(clock))
         return Triple(c, engine, streams)
+    }
+
+    @Test fun switchingChannelStopsTheOldStreamWhileTheNewLinkIsAskedFor() = runTest {
+        val (c, e, s) = setup()
+        c.play(PlaybackTarget.Live(ch))
+        runCurrent()
+        e.ready()
+        val stopsBefore = e.stops
+        s.liveDelayMs = 15_000 // a slow portal
+        c.play(PlaybackTarget.Live(ch.copy(code = "c2", name = "Kids")))
+        runCurrent()
+        // The old channel's picture and sound must go at once, not when the new link arrives.
+        assertEquals(stopsBefore + 1, e.stops)
+        assertFalse(e.playWhenReady)
+        advanceTimeBy(15_001)
+        runCurrent()
+        assertEquals("live-c2-2", e.opened.last().first)
     }
 
     @Test fun recordingOpenedOnAirKnowsWhereItEnds() = runTest {

@@ -127,7 +127,12 @@ class PlayerController(
     val positionMs: Long get() = if (engineOnTarget) engine.positionMs else archivePositionMs
     val durationMs: Long get() = engine.durationMs
 
+    /**
+     * A new channel or recording. The old stream stops at once: asking the portal for the new link can take
+     * a while, and the old channel's picture and sound must not go on under the new channel's name.
+     */
     fun play(target: PlaybackTarget) {
+        engine.stop()
         policy.onSuccess()
         archivePositionMs = (target as? PlaybackTarget.Archive)?.startOffsetMs ?: 0
         resetNotFound()

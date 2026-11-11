@@ -206,7 +206,8 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         // Browsing the list: the old channel's picture and sound go at once, the new picture shows when it plays.
         val shown = ps.target?.channel?.code
         val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
-        val hideVideo = !pip && (oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT)
+        // Connecting to a new channel or recording: no last frame of the old one under the new name.
+        val hideVideo = !pip && (oldChannel || ps.phase == Phase.CONNECTING || ps.phase == Phase.BLACKOUT)
         LaunchedEffect(oldChannel, ui.muted) { c.engine.player.volume = if (oldChannel || ui.muted) 0f else 1f }
         VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo, keepScreenOn = ps.phase != Phase.SLEEPING)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
