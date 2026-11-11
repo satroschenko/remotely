@@ -757,6 +757,7 @@ private fun SubtitlesBadge(on: Boolean, fontSize: TextUnit, onClick: (() -> Unit
 fun Banner(
     ch: Channel, number: Int, now: Programme?, next: Programme?, nowMs: Long, detailed: Boolean, tracks: StreamTracks? = null,
     subtitlesOn: Boolean = false, onSound: () -> Unit = {}, onSubtitles: () -> Unit = {},
+    buttons: (@Composable () -> Unit)? = null,
 ) {
     val sounds = tracks?.audio.orEmpty()
     Column(
@@ -772,6 +773,7 @@ fun Banner(
                 tracks, fontSize = 16.sp, Modifier.padding(start = 14.dp, end = 18.dp), quality = tracks?.qualityLabel,
                 subtitlesOn = subtitlesOn, onSound = onSound, onSubtitles = onSubtitles,
             )
+            if (buttons != null) { buttons(); Spacer(Modifier.width(18.dp)) }
             Text(ZalaTime.hhmm(nowMs), fontSize = 24.sp, color = Palette.TextDim)
         }
         val title = now?.title ?: ch.nowTitle.takeIf { nowMs < ch.nowEndMs }
@@ -808,7 +810,10 @@ fun Banner(
 
 @UnstableApi
 @Composable
-fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel, tracks: StreamTracks?, subtitlesOn: Boolean) {
+fun BoxScope.ArchiveOverlay(
+    a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel, tracks: StreamTracks?, subtitlesOn: Boolean,
+    buttons: (@Composable () -> Unit)? = null,
+) {
     val p = a.programme
     val now = vm.nowMs()
     val duration = (p.endMs - p.startMs).coerceAtLeast(1)
@@ -832,11 +837,14 @@ fun BoxScope.ArchiveOverlay(a: ArchiveUi, paused: Boolean, vm: PlaybackViewModel
     ) {
         // What the recording carries, as on air: quality on screen, subtitles, sound tracks (a tap switches them on a phone).
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            TrackBadges(
-                tracks, fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
-                subtitlesOn = subtitlesOn, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
-            )
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                TrackBadges(
+                    tracks, fontSize = 18.sp, Modifier.padding(start = 14.dp), quality = tracks?.qualityLabel,
+                    subtitlesOn = subtitlesOn, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
+                )
+            }
+            buttons?.invoke()
         }
         // Only on pause: while seeking the eyes are on the picture and the panel already covers enough of it.
         if (paused && p.description.isNotBlank()) AutoScrollText(p.description, Modifier.heightIn(max = 84.dp))

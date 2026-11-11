@@ -91,6 +91,9 @@ import app.remotely.ui.common.AnimatedNullable
 import app.remotely.ui.common.MessageDialog
 import app.remotely.ui.common.Motion
 import app.remotely.ui.playback.Toast
+import app.remotely.ui.playback.DialNumber
+import app.remotely.ui.playback.digitOf
+import app.remotely.ui.playback.PlaybackViewModel.Companion.DIAL_WAIT_MS
 import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.FocusStyle
 import app.remotely.ui.theme.Palette
@@ -369,6 +372,40 @@ private fun ChannelsPage(c: AppContainer) {
         moving = null
         scope.launch { c.settings.update { it.copy(order = codes) } }
     }
+
+    // Digits, as on the playback screen: the number of a channel in the list. While moving, the channel moving
+    // goes to that place; otherwise the selection jumps to that channel.
+    var dialing by remember { mutableStateOf<String?>(null) }
+    var dialJob by remember { mutableStateOf<Job?>(null) }
+    fun numbered() = order.filter { it.code !in s.hidden }
+    fun dialNow() {
+        val typed = dialing ?: return
+        dialJob?.cancel()
+        dialing = null
+        val target = numbered().getOrNull((typed.toIntOrNull() ?: return) - 1) ?: return
+        val code = moving
+        if (code != null) {
+            val from = order.indexOfFirst { it.code == code }
+            val to = order.indexOfFirst { it.code == target.code }
+            if (from >= 0 && to >= 0 && from != to) order.add(to, order.removeAt(from))
+        }
+        val focusOn = code ?: target.code
+        anchor = focusOn
+        scope.launch {
+            listState.scrollToItem((order.indexOfFirst { it.code == focusOn } - 3).coerceAtLeast(0))
+            withFrameNanos { }
+            runCatching { anchorFocus.requestFocus() }
+        }
+    }
+    fun dialDigit(d: Int) {
+        val count = numbered().size
+        if (count == 0) return
+        val typed = ((dialing ?: "") + d).trimStart('0').ifEmpty { return }
+        dialing = typed
+        dialJob?.cancel()
+        if (typed.length >= count.toString().length) dialNow()
+        else dialJob = scope.launch { delay(DIAL_WAIT_MS); dialNow() }
+    }
     BackHandler(enabled = moving != null) { finishMove() }
     BackHandler(enabled = menuFor != null) { menuFor = null }
 
@@ -392,10 +429,15 @@ private fun ChannelsPage(c: AppContainer) {
                 ),
             )
         }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+            AnimatedNullable(dialing, enter = Motion.fromTop, exit = Motion.toTop) { typed ->
+                DialNumber(typed, numbered().getOrNull((typed.toIntOrNull() ?: 0) - 1)?.name)
+            }
+        }
     }) {
         Title(tr("Каналы", "Каналы", "Channels"))
         Text(
-            if (moving != null) tr("Перемещение: ▲ ▼ — двигать канал, OK или Назад — готово", "Перамяшчэнне: ▲ ▼ — рухаць канал, OK або Назад — гатова", "Moving: ▲ ▼ — move the channel, OK or Back — done") else tr("OK на канале — избранное, скрыть, переместить", "OK на канале — абранае, схаваць, перамясціць", "OK on a channel — favourite, hide, move"),
+            if (moving != null) tr("Перемещение: ▲ ▼ или номер места цифрами — двигать канал, OK или Назад — готово", "Перамяшчэнне: ▲ ▼ або нумар месца лічбамі — рухаць канал, OK або Назад — гатова", "Moving: ▲ ▼ or the place number in digits — move the channel, OK or Back — done") else tr("OK на канале — избранное, скрыть, переместить. Цифры — перейти к каналу по номеру", "OK на канале — абранае, схаваць, перамясціць. Лічбы — перайсці да канала па нумары", "OK on a channel — favourite, hide, move. Digits — go to a channel by its number"),
             fontSize = 18.sp, color = if (moving != null) Palette.Focus else Palette.TextDim, modifier = Modifier.padding(bottom = 12.dp),
         )
         // Same numbering as the playback list: position among visible channels, updated live while moving.
@@ -405,6 +447,10 @@ private fun ChannelsPage(c: AppContainer) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 48.dp),
             modifier = Modifier.onPreviewKeyEvent { ev ->
+                digitOf(ev.nativeKeyEvent.keyCode)?.let { d ->
+                    if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) dialDigit(d)
+                    return@onPreviewKeyEvent true
+                }
                 val code = moving ?: return@onPreviewKeyEvent false
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent ev.key == Key.DirectionUp || ev.key == Key.DirectionDown
                 val i = order.indexOfFirst { it.code == code }
@@ -598,6 +644,7 @@ private fun helpSections() = listOf(
     )),
     HelpSection(tr("Телефон и планшет", "Тэлефон і планшэт", "Phone and tablet"), listOf(
         tr("Касание видео", "Дотык да відэа", "Tap the video") to tr("как OK", "як OK", "like OK"),
+        tr("Пауза и звук", "Паўза і гук", "Pause and sound") to tr("круглые кнопки на панели канала; после долгой паузы передача идёт с места паузы", "круглыя кнопкі на панэлі канала; пасля доўгай паўзы перадача ідзе з месца паўзы", "round buttons on the channel panel; after a long pause the programme goes on from where it stopped"),
         tr("Свайп вверх / вниз", "Свайп уверх / уніз", "Swipe up / down") to tr("следующий / предыдущий канал, в архиве — передача", "наступны / папярэдні канал, у архіве — перадача", "next / previous channel, in the archive — programme"),
         tr("Долгое нажатие", "Доўгае націсканне", "Long press") to tr("на канале — избранное", "на канале — абранае", "on a channel — favourite"),
         tr("Полоса внизу", "Паласа ўнізе", "Bar at the bottom") to tr("в архиве: нажмите или перетащите — перемотка", "у архіве: націсніце або перацягніце — перамотка", "in the archive: tap or drag to seek"),

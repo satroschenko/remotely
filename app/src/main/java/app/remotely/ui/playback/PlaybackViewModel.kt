@@ -96,6 +96,8 @@ data class PlaybackUi(
     val dialing: String? = null,
     val channelsFailed: Boolean = false,
     val needLogin: Boolean = false,
+    /** Sound off with the button on a phone; for this run only, every channel. */
+    val muted: Boolean = false,
 )
 
 @UnstableApi
@@ -253,6 +255,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     // ---- live ----
 
     fun switchTo(ch: Channel) {
+        livePausedAtMs = null
         exitArchiveState()
         _ui.update { it.copy(current = ch, now = null, next = null) }
         player.play(PlaybackTarget.Live(ch))
@@ -295,9 +298,49 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
             val started = c.clock.nowMs()
             loadNowNext(ch)?.let { (n, x) -> _ui.update { u -> if (u.current?.code == ch.code) u.copy(now = n, next = x) else u } }
             delay(((if (detailed) DETAILED_BANNER_MS else BANNER_MS) - (c.clock.nowMs() - started)).coerceAtLeast(1_000))
-            hideBanner()
+            // Live TV on pause: the banner with its ▶ stays, so it is clear why the picture stands.
+            if (!livePaused()) hideBanner()
         }
     }
+
+    // ---- phone buttons: pause on air and sound ----
+
+    /** When live TV was paused with the button on a phone; null while it plays. */
+    private var livePausedAtMs: Long? = null
+
+    fun toggleMute() = _ui.update { it.copy(muted = !it.muted) }
+
+    /**
+     * ⏸ / ▶ on a phone. In the archive it is the usual pause. On air the picture stops at once and the stream stops
+     * loading once its buffer is full, so the pause costs no traffic. After a short pause the picture goes on from
+     * the buffer; after a longer one the programme goes on from the moment of the pause through the archive, or
+     * live if the channel keeps no archive.
+     */
+    fun togglePlayPause() {
+        if (_ui.value.archive != null) { togglePause(); return }
+        val ch = _ui.value.current ?: return
+        val at = livePausedAtMs
+        // Not standing any more (the stream was reopened, say after the app came back): this press pauses again.
+        if (at == null || !player.state.value.paused) {
+            livePausedAtMs = c.clock.nowMs()
+            player.setPaused(true)
+            showBanner()
+            return
+        }
+        livePausedAtMs = null
+        if (c.clock.nowMs() - at < LIVE_RESUME_FROM_BUFFER_MS) {
+            player.setPaused(false)
+            showBanner()
+            return
+        }
+        viewModelScope.launch {
+            val p = runCatching { c.epg.around(ch.code, at) }.getOrDefault(emptyList()).firstOrNull { at >= it.startMs && at < it.endMs }
+            if (p != null && canRecord(ch, p)) playArchive(ch, p, at - p.startMs, continued = true) else switchTo(ch)
+        }
+    }
+
+    /** Live TV stands on the phone's pause button. */
+    fun livePaused(): Boolean = livePausedAtMs != null && player.state.value.paused
 
     fun hideBanner() {
         bannerJob?.cancel()
@@ -557,6 +600,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
     private var continuedRecording = false
 
     fun playArchive(ch: Channel, p: Programme, offsetMs: Long, continued: Boolean = false) {
+        livePausedAtMs = null
         continuedRecording = continued
         dismissDialog()
         previewJob?.cancel()
@@ -766,7 +810,7 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
 
     fun nowMs() = c.clock.nowMs()
 
-    private companion object {
+    companion object {
         const val ZAP_SETTLE_MS = 300L
         /** Time to type the next digit of a channel number. */
         const val DIAL_WAIT_MS = 2_000L
@@ -776,6 +820,8 @@ class PlaybackViewModel(private val c: AppContainer) : ViewModel() {
         /** A press this soon after the previous one is zapping through: the stream waits for the presses to stop. */
         const val ZAP_BURST_MS = 600L
         const val BANNER_MS = 5_000L
+        /** A shorter pause on air goes on from the player's buffer, a longer one through the archive. */
+        const val LIVE_RESUME_FROM_BUFFER_MS = 30_000L
         const val DETAILED_BANNER_MS = 10_000L
         /** A recording this much shorter than its programme was cut by the server. */
         const val CUT_MARGIN_MS = 60_000L

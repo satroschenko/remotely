@@ -6,6 +6,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -64,8 +66,14 @@ fun RemotelyTheme(fontSize: FontSize = FontSize.LARGE, content: @Composable () -
     val density = LocalDensity.current
     // Boxes differ in screen density (a 1080p box may report 1280 or 960 dp wide), which would shrink or grow
     // the whole UI. Fit the 960x540 canvas to the screen instead, so every TV looks the same.
-    val metrics = LocalContext.current.resources.displayMetrics
-    val canvas = minOf(metrics.widthPixels / CANVAS_WIDTH_DP, metrics.heightPixels / CANVAS_HEIGHT_DP)
+    // Recomputed when the window changes (rotation, split screen): the activity is not recreated then, and a stale
+    // canvas left a phone turned by another app with tiny text until the font size was changed.
+    val configuration = LocalConfiguration.current
+    val resources = LocalContext.current.resources
+    val canvas = remember(configuration.screenWidthDp, configuration.screenHeightDp, configuration.orientation) {
+        val metrics = resources.displayMetrics
+        minOf(metrics.widthPixels / CANVAS_WIDTH_DP, metrics.heightPixels / CANVAS_HEIGHT_DP)
+    }
     CompositionLocalProvider(
         LocalDensity provides Density(if (canvas > 0f) canvas else density.density, density.fontScale * fontSize.scale),
     ) {

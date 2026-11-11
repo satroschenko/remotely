@@ -207,7 +207,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
         val shown = ps.target?.channel?.code
         val oldChannel = ui.overlay == Overlay.LIST && ui.focused != null && ui.focused?.code != shown
         val hideVideo = !pip && (oldChannel || (ui.overlay == Overlay.LIST && ps.phase == Phase.CONNECTING) || ps.phase == Phase.BLACKOUT)
-        LaunchedEffect(oldChannel) { c.engine.player.volume = if (oldChannel) 0f else 1f }
+        LaunchedEffect(oldChannel, ui.muted) { c.engine.player.volume = if (oldChannel || ui.muted) 0f else 1f }
         VideoSurface(c.engine.player, preview = withPanel, hidden = hideVideo, keepScreenOn = ps.phase != Phase.SLEEPING)
         LaunchedEffect(withPanel) { c.engine.setPreview(withPanel) }
         // In the small window only the picture: the panels and messages come back with the app.
@@ -255,7 +255,12 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
             Box(Modifier.fillMaxSize()) { CompositionLocalProvider(LocalGenreColors provides settings.genreColors) { EpgPanel(vm, epg) } }
         }
 
-        ui.archive?.let { ArchiveOverlay(it, ps.paused, vm, playingTracks, settings.subtitles) }
+        // Phones: ⏸/▶ and the sound as buttons on the panels, there is no remote for them.
+        val touch = hasTouchScreen()
+        val buttons: (@Composable () -> Unit)? = if (!touch) null else {
+            { PlayerButtons(ps.paused, ui.muted, onPlayPause = vm::togglePlayPause, onMute = vm::toggleMute) }
+        }
+        ui.archive?.let { ArchiveOverlay(it, ps.paused, vm, playingTracks, settings.subtitles, buttons) }
         AnimatedNullable(
             ui.current.takeIf { ui.overlay == Overlay.NONE && ui.archive == null && ui.bannerVisible },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -266,6 +271,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
                     Banner(
                         ch, lists.numberOf(ch), ui.now, ui.next, vm.nowMs(), ui.bannerDetailed, playingTracks?.takeIf { ch.code == targetCode },
                         subtitlesOn = settings.subtitles, onSound = vm::cycleAudio, onSubtitles = vm::toggleSubtitles,
+                        buttons = buttons,
                     )
                 }
             }
@@ -335,7 +341,7 @@ fun PlaybackScreen(c: AppContainer, onOpenSettings: () -> Unit, onNeedLogin: () 
 private const val SWIPE_DP = 48
 
 /** 0–9 on the remote or a keyboard, the number row and the numeric pad. */
-private fun digitOf(keyCode: Int): Int? = when (keyCode) {
+internal fun digitOf(keyCode: Int): Int? = when (keyCode) {
     in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> keyCode - android.view.KeyEvent.KEYCODE_0
     in android.view.KeyEvent.KEYCODE_NUMPAD_0..android.view.KeyEvent.KEYCODE_NUMPAD_9 -> keyCode - android.view.KeyEvent.KEYCODE_NUMPAD_0
     else -> null
