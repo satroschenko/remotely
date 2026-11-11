@@ -6,6 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -123,8 +126,11 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
     fun up() { page.parent?.let { page = it } ?: onBack() }
     fun open(p: Page) { openedFrom[page] = p; page = p }
     BackHandler { up() }
-    // On pages without sideways controls ← goes back too, like Back.
-    val leftIsBack = page != Page.MAIN && page != Page.CHANNELS
+    // Below the main page ← is Back when there is nothing to the left (a dialog's buttons in a row still take it).
+    // It goes through the Back dispatcher, so a move in progress or an open dialog closes first, as with Back.
+    val leftIsBack = page != Page.MAIN
+    val focusManager = LocalFocusManager.current
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     AnimatedContent(
         targetState = page,
         transitionSpec = {
@@ -135,7 +141,9 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit, onLoggedOut: () -> Unit)
         label = "settingsPage",
         modifier = Modifier.fillMaxSize().background(Palette.Background).wheelMovesFocus().onPreviewKeyEvent { ev ->
             if (!leftIsBack || ev.key != Key.DirectionLeft) return@onPreviewKeyEvent false
-            if (ev.type == KeyEventType.KeyDown) up()
+            if (ev.type == KeyEventType.KeyDown && !focusManager.moveFocus(FocusDirection.Left)) {
+                backDispatcher?.onBackPressed() ?: up()
+            }
             true
         },
     ) { p ->
