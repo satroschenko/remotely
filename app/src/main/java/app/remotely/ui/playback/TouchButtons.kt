@@ -1,6 +1,8 @@
 package app.remotely.ui.playback
 
+import android.app.UiModeManager
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -28,11 +30,19 @@ import app.remotely.core.tr
 import app.remotely.ui.common.pointerClick
 import app.remotely.ui.theme.Palette
 
-/** A phone or tablet: a screen to tap. TV boxes have none, they get no buttons. */
+/**
+ * A phone or tablet: a screen to tap. TV boxes get no buttons, even those that claim a touch screen
+ * (the TV emulator and some boxes do): there the remote does it all.
+ */
 @Composable
 fun hasTouchScreen(): Boolean {
     val ctx = LocalContext.current
-    return remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+    return remember {
+        val pm = ctx.packageManager
+        val tv = pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            ctx.getSystemService(UiModeManager::class.java)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        !tv && pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+    }
 }
 
 /**

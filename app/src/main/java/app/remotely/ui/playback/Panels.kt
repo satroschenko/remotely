@@ -682,7 +682,8 @@ private fun ProgrammeRow(p: Programme, now: Long, recordable: Boolean, modifier:
         Row(Modifier.height(IntrinsicSize.Min).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             GenreStripe(p.genre, p.title)
             Text(ZalaTime.hhmm(p.startMs), fontSize = 20.sp, color = if (past) Palette.TextDim else Palette.Text, modifier = Modifier.width(68.dp))
-            Column(Modifier.weight(1f)) {
+            // A little room before the plate: a scrolling title does not run up against it.
+            Column(Modifier.weight(1f).padding(end = 8.dp)) {
                 ScrollingLine(p.title, focused, fontSize = 20.sp, color = if (past && !recordable) Palette.TextDim else Palette.Text)
                 if (onAir) ProgressBar(EpgLogic.progress(p.startMs, p.endMs, now), Modifier.fillMaxWidth(0.7f).padding(top = 6.dp))
             }
