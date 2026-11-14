@@ -69,6 +69,24 @@ class ArchiveManifestTest {
         assertEquals(segmentStarts.size / 2, segmentStarts.toSet().size)
     }
 
+    @Test fun windowThatStartsLaterThanAskedIsSeen() {
+        // Asked from the programme start, the window begins there: a few seconds at most.
+        assertTrue(ArchiveManifest.startGapMs(w1, start) < 10_000)
+        // The server gave its latest stretch instead: asked from 11:48, the window begins at 11:55.
+        val gap = ArchiveManifest.startGapMs(w1, start - 7 * 60_000)
+        assertTrue("gap $gap", gap in 6 * 60_000L..8 * 60_000L)
+        assertEquals(0L, ArchiveManifest.startGapMs(ArchiveManifest.Window("u", "not xml"), start))
+    }
+
+    @Test fun recordingIsTakenOnlyWhenItHasMoreThanTheTimeshiftWithoutItsStart() {
+        val want = 80 * 60_000L
+        val gap = 7 * 60_000L
+        assertTrue(ArchiveManifest.recordingCoversMore(recordingMs = want, wantMs = want, gapMs = gap))
+        // A recording cut short by Zala is worse than a timeshift that lacks seven minutes.
+        assertTrue(!ArchiveManifest.recordingCoversMore(recordingMs = 12 * 60_000L, wantMs = want, gapMs = gap))
+        assertTrue(!ArchiveManifest.recordingCoversMore(recordingMs = null, wantMs = want, gapMs = gap))
+    }
+
     @Test fun oneWindowIsAsMuchAsItHas() {
         val mpd = ArchiveManifest.fromTimeshift(listOf(w1), start, end)!!
         assertEquals(utc("2026-10-31T13:35:02.277Z") - start, ArchiveManifest.durationMs(mpd))

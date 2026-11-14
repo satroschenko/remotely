@@ -47,6 +47,24 @@ object ArchiveManifest {
         segments(tpl).lastOrNull()?.let { ast + (it.first + it.second) * 1000 / scale }
     }.getOrNull()
 
+    /**
+     * How much later than [fromMs] the window begins, 0 when it begins there. Now and then a server answers with
+     * its latest stretch instead of the one asked for: the programme then lacks its start, and the missing part
+     * grows with the clock.
+     */
+    fun startGapMs(window: Window, fromMs: Long): Long = runCatching {
+        val root = parse(window.mpd).documentElement
+        val ast = Instant.parse(root.getAttribute("availabilityStartTime")).toEpochMilli()
+        val tpl = root.elements("SegmentTemplate").first()
+        val scale = tpl.getAttribute("timescale").toLongOrNull() ?: 1L
+        val first = segments(tpl).firstOrNull { (t, d) -> ast + (t + d) * 1000 / scale > fromMs + 500 } ?: return@runCatching 0L
+        (ast + first.first * 1000 / scale - fromMs).coerceAtLeast(0)
+    }.getOrDefault(0L)
+
+    /** A recording of [recordingMs] has more of the programme than a timeshift that lacks its first [gapMs]. */
+    fun recordingCoversMore(recordingMs: Long?, wantMs: Long, gapMs: Long): Boolean =
+        recordingMs != null && recordingMs > wantMs - gapMs
+
     /** A downloaded manifest given its own address as base, so it can be handed over as a data: URI. */
     fun withBase(mpd: String, url: String): String? = runCatching {
         val doc = parse(mpd)
